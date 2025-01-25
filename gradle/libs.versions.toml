@@ -1,0 +1,11 @@
+[versions]
+kotlin-jvm = "2.1.0"
+ajalt-clikt = "5.0.2"
+
+[libraries]
+ajalt-clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "ajalt-clikt" }
+
+[bundles]
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin-jvm" }
