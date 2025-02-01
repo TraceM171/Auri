@@ -1,4 +1,4 @@
-package com.auri.core
+package com.auri.core.util
 
 import arrow.core.Either
 import arrow.core.left

@@ -3,8 +3,11 @@ package com.auri.collection.collectors
 import arrow.core.mapValuesNotNull
 import arrow.core.raise.either
 import co.touchlab.kermit.Logger
+import com.auri.collection.Collector
 import com.auri.collection.RawCollectedSample
 import com.auri.core.*
+import com.auri.core.data.sqliteConnection
+import com.auri.core.util.*
 import kotlinx.coroutines.flow.*
 import kotlinx.datetime.toKotlinLocalDate
 import net.lingala.zip4j.ZipFile
@@ -28,18 +31,18 @@ class TheZooCollector(
     private val samplesArchFilter: Regex = Regex(".*"),
     private val samplesPlatformFilter: Regex = Regex(".*"),
     private val samplesMagicNumberFilter: List<MagicNumber> = MagicNumber.entries,
-) {
+) : Collector {
+    override val name: String = "TheZoo"
+    override val description: String = "Collect malware samples from theZoo repository"
+    override val version: String = "0.0.1"
 
-    fun samples() = flow {
+    override fun samples() = flow {
         val theZooFolder = File(workingDirectory, "theZooRepo").apply { mkdirs() }
         cloneRepo(theZooFolder).onLeft {
             return@flow
         }
 
-        val theZooDB = Database.connect(
-            url = "jdbc:sqlite:${File(theZooFolder, "conf/maldb.db").absolutePath}",
-            driver = "org.sqlite.JDBC"
-        )
+        val theZooDB = File(theZooFolder, "conf/maldb.db").let(::sqliteConnection)
         val filteredSamples = theZooDB.getMalwareSamples()
 
         val extractedSamples = filteredSamples.associateWith { sample ->
@@ -75,10 +78,10 @@ class TheZooCollector(
         ).isRight()
         if (existsRepo) {
             if (invalidateCache) {
-                Logger.i { "Removing theZoo repository cache" }
+                Logger.d { "Removing theZoo repository cache" }
                 repoFolder.deleteRecursively()
             } else {
-                Logger.i { "theZoo repository already exists" }
+                Logger.d { "theZoo repository already exists" }
                 return@either
             }
         }
@@ -94,7 +97,7 @@ class TheZooCollector(
         ).onLeft {
             Logger.e { "Failed to clone theZoo repository: $it" }
         }.mapLeft { }.bind()
-        Logger.i { "Successfully cloned theZoo repository" }
+        Logger.d { "Successfully cloned theZoo repository" }
     }
 
     private fun Database.getMalwareSamples(): List<MalwareEntity> {
@@ -106,7 +109,7 @@ class TheZooCollector(
                     && it.architecture containsMatch samplesArchFilter.withMultilineOption()
                     && it.platform containsMatch samplesPlatformFilter.withMultilineOption()
         }
-        Logger.i { "Found ${samples.size} malware samples matching the filters" }
+        Logger.d { "Found ${samples.size} malware samples matching the filters" }
         return samples
     }
 
@@ -135,7 +138,7 @@ class TheZooCollector(
         if (executables.isEmpty())
             Logger.e { "No executable found for sample ${sampleDir.name}" }
         else
-            Logger.i { "Found ${executables.size} executables for sample ${sampleDir.name}" }
+            Logger.d { "Found ${executables.size} executables for sample ${sampleDir.name}" }
         return executables
     }
 }

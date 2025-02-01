@@ -1,4 +1,4 @@
-package com.auri.core
+package com.auri.core.util
 
 infix fun String.containsMatch(regex: Regex): Boolean = regex.containsMatchIn(this)
 
