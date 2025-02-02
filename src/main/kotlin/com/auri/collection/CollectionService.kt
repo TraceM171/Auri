@@ -30,7 +30,7 @@ class CollectionService(
             .map { collector ->
                 collector.samples(
                     Collector.CollectionParameters(
-                        workingDirectory = workingDirectory,
+                        workingDirectory = File(workingDirectory, collector.name).apply { mkdirs() },
                         invalidateCache = invalidateCache
                     )
                 ).map { SampleWithSource(it, collector) }
