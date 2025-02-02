@@ -18,6 +18,10 @@ dependencies {
     implementation(libs.bundles.arrow)
     implementation(libs.bundles.exposed)
     implementation(libs.lingala.zip4j)
+    implementation(libs.bundles.hoplite)
+    implementation(platform(libs.koin.bom))
+    implementation(libs.koin.core)
+    implementation(libs.classgraph)
 
     testImplementation(kotlin("test"))
 }

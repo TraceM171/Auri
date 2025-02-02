@@ -2,6 +2,8 @@ package com.auri.collection
 
 import arrow.fx.coroutines.parMapNotNullUnordered
 import co.touchlab.kermit.Logger
+import com.auri.collection.definition.Collector
+import com.auri.collection.definition.RawCollectedSample
 import com.auri.core.data.entity.RawSampleEntity
 import com.auri.core.data.entity.RawSampleTable
 import com.auri.core.util.Algorithm
@@ -14,8 +16,11 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.datetime.toKotlinLocalDate
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
+import java.io.File
 
 class CollectionService(
+    private val workingDirectory: File,
+    private val invalidateCache: Boolean,
     private val auriDB: Database,
     private val collectors: List<Collector>
 ) {
@@ -23,8 +28,12 @@ class CollectionService(
     suspend fun startCollection() = coroutineScope {
         collectors
             .map { collector ->
-                collector.samples()
-                    .map { SampleWithSource(it, collector) }
+                collector.samples(
+                    Collector.CollectionParameters(
+                        workingDirectory = workingDirectory,
+                        invalidateCache = invalidateCache
+                    )
+                ).map { SampleWithSource(it, collector) }
             }
             .merge()
             .parMapNotNullUnordered {

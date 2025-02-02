@@ -3,8 +3,8 @@ package com.auri.collection.collectors
 import arrow.core.mapValuesNotNull
 import arrow.core.raise.either
 import co.touchlab.kermit.Logger
-import com.auri.collection.Collector
-import com.auri.collection.RawCollectedSample
+import com.auri.collection.definition.Collector
+import com.auri.collection.definition.RawCollectedSample
 import com.auri.core.*
 import com.auri.core.data.sqliteConnection
 import com.auri.core.util.*
@@ -23,22 +23,28 @@ import java.net.URL
 import java.time.format.DateTimeFormatter
 
 class TheZooCollector(
-    private val workingDirectory: File,
-    private val invalidateCache: Boolean = false,
-    private val repoUrl: URL = URI.create("https://github.com/ytisf/theZoo.git").toURL(),
-    private val repoBranch: String = "master",
-    private val samplesTypeFilter: Regex = Regex(".*"),
-    private val samplesArchFilter: Regex = Regex(".*"),
-    private val samplesPlatformFilter: Regex = Regex(".*"),
-    private val samplesMagicNumberFilter: List<MagicNumber> = MagicNumber.entries,
+    private val definition: Definition
 ) : Collector {
-    override val name: String = "TheZoo"
+    override val name: String = definition.customName
     override val description: String = "Collect malware samples from theZoo repository"
     override val version: String = "0.0.1"
 
-    override fun samples() = flow {
-        val theZooFolder = File(workingDirectory, "theZooRepo").apply { mkdirs() }
-        cloneRepo(theZooFolder).onLeft {
+    data class Definition(
+        val customName: String = "TheZoo",
+        val repoUrl: URL = URI.create("https://github.com/ytisf/theZoo.git").toURL(),
+        val repoBranch: String = "master",
+        val samplesTypeFilter: Regex = Regex(".*"),
+        val samplesArchFilter: Regex = Regex(".*"),
+        val samplesPlatformFilter: Regex = Regex(".*"),
+        val samplesMagicNumberFilter: List<MagicNumber> = MagicNumber.entries,
+    )
+
+
+    override fun samples(
+        collectionParameters: Collector.CollectionParameters
+    ): Flow<RawCollectedSample> = flow {
+        val theZooFolder = File(collectionParameters.workingDirectory, name).apply { mkdirs() }
+        cloneRepo(collectionParameters, theZooFolder).onLeft {
             return@flow
         }
 
@@ -68,16 +74,18 @@ class TheZooCollector(
     }
 
     private suspend fun cloneRepo(
+        collectionParameters: Collector.CollectionParameters,
         repoFolder: File,
     ) = either {
-        val existsRepo = runNativeCommand(
+        val repoRoot = runNativeCommand(
             workingDir = repoFolder,
             "git",
             "rev-parse",
-            "--is-inside-work-tree"
-        ).isRight()
+            "--show-toplevel"
+        ).getOrNull()
+        val existsRepo = repoRoot?.let { File(it) } == repoFolder
         if (existsRepo) {
-            if (invalidateCache) {
+            if (collectionParameters.invalidateCache) {
                 Logger.d { "Removing theZoo repository cache" }
                 repoFolder.deleteRecursively()
             } else {
@@ -85,15 +93,15 @@ class TheZooCollector(
                 return@either
             }
         }
-        Logger.d { "Cloning theZoo repository ($repoUrl) to $repoFolder" }
+        Logger.d { "Cloning theZoo repository ($definition.repoUrl) to $repoFolder" }
         runNativeCommand(
-            workingDir = workingDirectory,
+            workingDir = collectionParameters.workingDirectory,
             "git",
             "clone",
-            repoUrl.toString(),
+            definition.repoUrl.toString(),
             repoFolder.absolutePath,
             "--branch",
-            repoBranch
+            definition.repoBranch
         ).onLeft {
             Logger.e { "Failed to clone theZoo repository: $it" }
         }.mapLeft { }.bind()
@@ -105,9 +113,9 @@ class TheZooCollector(
         val samples = transaction(this) {
             MalwareEntity.all().toList()
         }.filter {
-            it.type containsMatch samplesTypeFilter.withMultilineOption()
-                    && it.architecture containsMatch samplesArchFilter.withMultilineOption()
-                    && it.platform containsMatch samplesPlatformFilter.withMultilineOption()
+            it.type containsMatch this@TheZooCollector.definition.samplesTypeFilter.withMultilineOption()
+                    && it.architecture containsMatch this@TheZooCollector.definition.samplesArchFilter.withMultilineOption()
+                    && it.platform containsMatch this@TheZooCollector.definition.samplesPlatformFilter.withMultilineOption()
         }
         Logger.d { "Found ${samples.size} malware samples matching the filters" }
         return samples
@@ -133,7 +141,7 @@ class TheZooCollector(
         Logger.d { "Successfully extracted ${zipFile.name}" }
         Logger.d { "Searching for extracted executable" }
         val executables = sampleDir.walkTopDown()
-            .filter { file -> file.magicNumber() in samplesMagicNumberFilter }
+            .filter { file -> file.magicNumber() in this@TheZooCollector.definition.samplesMagicNumberFilter }
             .toList()
         if (executables.isEmpty())
             Logger.e { "No executable found for sample ${sampleDir.name}" }

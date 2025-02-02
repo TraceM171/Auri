@@ -7,6 +7,9 @@ arrow = "2.0.1"
 exposed = "0.58.0"
 xeial-sqlite = "3.44.1.0"
 lingala-zip4j = "2.11.5"
+hoplite = "2.9.0"
+koin-bom = "4.0.2"
+classgraph = "4.8.179"
 
 [libraries]
 kotlin-coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlin-coroutines" }
@@ -20,10 +23,17 @@ exposed-jdbc = { module = "org.jetbrains.exposed:exposed-jdbc", version.ref = "e
 exposed-kotlin-datetime = { module = "org.jetbrains.exposed:exposed-kotlin-datetime", version.ref = "exposed" }
 xerial-sqlite = { module = "org.xerial:sqlite-jdbc", version.ref = "xeial-sqlite" }
 lingala-zip4j = { module = "net.lingala.zip4j:zip4j", version.ref = "lingala-zip4j" }
+hoplite-core = { module = "com.sksamuel.hoplite:hoplite-core", version.ref = "hoplite" }
+hoplite-yaml = { module = "com.sksamuel.hoplite:hoplite-yaml", version.ref = "hoplite" }
+hoplite-arrow = { module = "com.sksamuel.hoplite:hoplite-arrow", version.ref = "hoplite" }
+koin-bom = { module = "io.insert-koin:koin-bom", version.ref = "koin-bom" }
+koin-core = { module = "io.insert-koin:koin-core" }
+classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
 
 [bundles]
 arrow = ["arrow-core", "arrow-coroutines"]
 exposed = ["exposed-core", "exposed-jdbc", "xerial-sqlite", "exposed-dao", "exposed-kotlin-datetime"]
+hoplite = ["hoplite-core", "hoplite-yaml", "hoplite-arrow"]
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

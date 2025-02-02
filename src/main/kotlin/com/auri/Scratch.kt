@@ -2,19 +2,16 @@ package com.auri
 
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import com.auri.collection.CollectionService
-import com.auri.collection.Collector
-import com.auri.collection.collectors.TheZooCollector
-import com.auri.core.data.sqliteConnection
+import com.auri.app.collectSamples
 import com.auri.core.util.getResource
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import java.io.File
 
-fun main() = runBlocking {
-    val workingDirectory = File("/home/auri/TFM/Scratch")
+fun main(): Unit = runBlocking {
+    val workingDirectory = File("/home/auri/TFM/auri/scratch")
     val auriDB = File(workingDirectory, "auri.db")
+    val configFile = File(workingDirectory, "config.yml")
+
     Logger.setMinSeverity(Severity.Info)
 
     auriDB.delete()
@@ -24,7 +21,17 @@ fun main() = runBlocking {
         } ?: throw IllegalStateException("Could not find auri.db in resources")
     }
 
-    val collector = TheZooCollector(
+    collectSamples(
+        configFile = configFile
+    )
+
+    /*val config = ConfigLoaderBuilder.default()
+        .addFileSource(configFile)
+        .withExplicitSealedTypes()
+        .build()
+        .loadConfigOrThrow<MainConf>()*/
+
+    /*val collector = TheZooCollector(
         workingDirectory = workingDirectory,
         invalidateCache = false,
         samplesTypeFilter = Regex("ransomware"),
@@ -35,13 +42,14 @@ fun main() = runBlocking {
         auriDB = File(workingDirectory, "auri.db").let(::sqliteConnection),
         collectors = listOf(collector),
     )
-    collectionService.startCollection()
+    collectionService.startCollection()*/
 }
 
+/*
 private suspend fun testCollector(collector: Collector) {
     val samples = collector.samples().onEach {
         Logger.i { "Sample: $it" }
     }.toList()
     Logger.i { "Collected ${samples.size} samples" }
     Logger.i { "Count of samples with date: ${samples.count { it.submissionDate != null }}" }
-}
+}*/
