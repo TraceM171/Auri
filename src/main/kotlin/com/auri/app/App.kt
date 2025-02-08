@@ -1,34 +1,31 @@
 package com.auri.app
 
 import com.auri.collection.CollectionService
-import com.auri.conf.SubclassDecoder
+import com.auri.conf.configByPrefix
 import com.auri.conf.model.CollectionPhaseConfig
+import com.auri.conf.model.MainConf
 import com.auri.core.data.sqliteConnection
-import com.sksamuel.hoplite.ConfigLoaderBuilder
-import com.sksamuel.hoplite.ExperimentalHoplite
-import com.sksamuel.hoplite.addFileSource
+import com.auri.core.extension.withExtensions
+import com.auri.core.util.chainIfNotNull
 import java.io.File
 
-@OptIn(ExperimentalHoplite::class)
 suspend fun collectSamples(
     configFile: File,
 ) {
     val workingDirectory = File("/home/auri/TFM/auri/scratch")
     val auriDB = File(workingDirectory, "auri.db")
 
-    //val mainConfig: MainConf = configFile.configByPrefix(prefix = null)
-    val collectionPhaseConfig: CollectionPhaseConfig =
-        ConfigLoaderBuilder.default()
-            .addFileSource(configFile)
-            .addDecoder(SubclassDecoder())
-            .withExplicitSealedTypes()
-            .build()
-            .loadConfigOrThrow(prefix = "collectionPhase")
+    val mainConfig: MainConf = configFile.configByPrefix()
+    val classLoader = Thread.currentThread().contextClassLoader
+        .chainIfNotNull(mainConfig.extensionsFolder) { withExtensions(it) }
+    val phaseConfig: CollectionPhaseConfig =
+        configFile.configByPrefix(classLoader = classLoader, prefix = "collectionPhase")
+
     val collectionService = CollectionService(
         workingDirectory = workingDirectory,
         invalidateCache = false,
         auriDB = auriDB.let(::sqliteConnection),
-        collectors = collectionPhaseConfig.collectors,
+        collectors = phaseConfig.collectors,
     )
     collectionService.startCollection()
 }

@@ -18,7 +18,7 @@ inline fun <T> T.chainIf(
 @OptIn(ExperimentalContracts::class)
 inline fun <T, R : Any> T.chainIfNotNull(
     value: R?,
-    block: T.(value: R) -> T?
+    block: T.(value: R) -> T
 ): T {
     contract {
         callsInPlace(block, InvocationKind.EXACTLY_ONCE)

@@ -1,5 +1,6 @@
 package com.auri.collection.definition
 
+import com.auri.core.extension.ExtensionPoint
 import kotlinx.coroutines.flow.Flow
 import java.io.File
 
@@ -8,6 +9,7 @@ import java.io.File
  *
  * A collector is a component that collects samples from a source and emits them as [RawCollectedSample]s.
  */
+@ExtensionPoint
 interface Collector {
     /**
      * The name of the collector. Must be unique for each collector.

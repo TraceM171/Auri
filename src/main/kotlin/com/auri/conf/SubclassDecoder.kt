@@ -9,7 +9,9 @@ import kotlin.reflect.KClass
 import kotlin.reflect.KType
 import kotlin.reflect.full.createType
 
-class SubclassDecoder : NullHandlingDecoder<Any> {
+class SubclassDecoder(
+    private val classLoader: ClassLoader
+) : NullHandlingDecoder<Any> {
 
     override fun supports(type: KType): Boolean =
         (type.classifier as? KClass<*>)?.isFinal == false
@@ -58,5 +60,5 @@ class SubclassDecoder : NullHandlingDecoder<Any> {
     }
 
     private fun getKClassForName(name: String) =
-        runCatching { Class.forName(name) }.getOrNull()?.kotlin
+        runCatching { Class.forName(name, true, classLoader) }.getOrNull()?.kotlin
 }
