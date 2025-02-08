@@ -53,6 +53,10 @@ class CollectionService(
                         Logger.i { "Sample ${sample.name} already exists in the database, skipping" }
                         return@transaction
                     }
+                    val relativePath = sample.executable.relativeToOrNull(workingDirectory)?.path ?: run {
+                        Logger.w { "Failed to get relative path for sample ${sample.name}, it will not be saved to the database" }
+                        return@transaction
+                    }
                     val savedEntity = RawSampleEntity.new {
                         this.md5 = hashes[Algorithm.MD5]!!
                         this.sha1 = hashes[Algorithm.SHA1]!!
@@ -60,7 +64,7 @@ class CollectionService(
                         this.name = sample.name
                         this.sourceName = source.name
                         this.sourceVersion = source.version
-                        this.path = sample.executable.path
+                        this.path = relativePath
                         this.collectionDate = java.time.LocalDate.now().toKotlinLocalDate()
                         this.submissionDate = sample.submissionDate
                     }
