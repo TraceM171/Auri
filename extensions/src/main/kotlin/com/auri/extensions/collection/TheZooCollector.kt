@@ -4,8 +4,9 @@ import arrow.core.getOrElse
 import arrow.core.mapValuesNotNull
 import co.touchlab.kermit.Logger
 import com.auri.core.*
-import com.auri.core.collection.model.Collector
-import com.auri.core.collection.model.RawCollectedSample
+import com.auri.core.collection.Collector
+import com.auri.core.collection.RawCollectedSample
+import com.auri.core.common.MissingDependency
 import com.auri.core.common.util.*
 import com.auri.extensions.common.sqliteConnection
 import kotlinx.coroutines.flow.*
@@ -39,6 +40,11 @@ class TheZooCollector(
         val samplesMagicNumberFilter: List<MagicNumber> = MagicNumber.entries,
     )
 
+    override suspend fun checkDependencies(): List<MissingDependency> = buildList {
+        DependencyChecks.checkGitAvailable(
+            use = "cloning the source repository",
+        )?.let(::add)
+    }
 
     override fun samples(
         collectionParameters: Collector.CollectionParameters

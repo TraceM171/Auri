@@ -1,4 +1,4 @@
-package com.auri.core.data.entity
+package com.auri.common.data.entity
 
 import org.jetbrains.exposed.dao.IntEntity
 import org.jetbrains.exposed.dao.IntEntityClass

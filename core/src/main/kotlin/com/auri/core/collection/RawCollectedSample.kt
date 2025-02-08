@@ -1,4 +1,4 @@
-package com.auri.core.collection.model
+package com.auri.core.collection
 
 import kotlinx.datetime.LocalDate
 import java.io.File

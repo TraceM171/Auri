@@ -2,7 +2,7 @@ package com.auri.core.common.util
 
 import arrow.core.raise.either
 import co.touchlab.kermit.Logger
-import com.auri.core.collection.model.Collector
+import com.auri.core.collection.Collector
 import java.io.File
 import java.net.URL
 
@@ -27,13 +27,8 @@ suspend fun Collector.cloneRepo(
     ).getOrNull()
     val existsRepo = repoRoot?.let { File(it) } == repoFolder
     if (existsRepo) {
-        if (collectionParameters.invalidateCache) {
-            Logger.d { "Removing $name repository cache" }
-            repoFolder.deleteRecursively()
-        } else {
-            Logger.d { "$name repository already exists" }
-            return@either repoFolder
-        }
+        Logger.d { "$name repository already exists" }
+        return@either repoFolder
     }
     Logger.d { "Cloning $name repository (${gitRepo.url}) to $repoFolder" }
     runNativeCommand(

@@ -1,6 +1,8 @@
-package com.auri.core.collection.model
+package com.auri.core.collection
 
 import com.auri.core.common.ExtensionPoint
+import com.auri.core.common.HasDependencies
+import com.auri.core.common.MissingDependency
 import kotlinx.coroutines.flow.Flow
 import java.io.File
 
@@ -10,7 +12,7 @@ import java.io.File
  * A collector is a component that collects samples from a source and emits them as [RawCollectedSample]s.
  */
 @ExtensionPoint
-interface Collector {
+interface Collector : HasDependencies {
     /**
      * The name of the collector. Must be unique for each collector.
      */
@@ -35,6 +37,8 @@ interface Collector {
         collectionParameters: CollectionParameters
     ): Flow<RawCollectedSample>
 
+    override suspend fun checkDependencies(): List<MissingDependency> = emptyList()
+
     /**
      * Parameters for the collection.
      */
@@ -45,9 +49,5 @@ interface Collector {
          * Any files that are created during the collection will be created in this directory.
          */
         val workingDirectory: File,
-        /**
-         * If true, the cache will be invalidated before collecting samples.
-         */
-        val invalidateCache: Boolean,
     )
 }

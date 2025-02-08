@@ -1,13 +1,15 @@
 package com.auri.collection
 
+import arrow.core.toNonEmptyListOrNull
+import arrow.fx.coroutines.parMap
 import arrow.fx.coroutines.parMapNotNullUnordered
 import co.touchlab.kermit.Logger
-import com.auri.core.collection.model.Collector
-import com.auri.core.collection.model.RawCollectedSample
+import com.auri.common.data.entity.RawSampleEntity
+import com.auri.common.data.entity.RawSampleTable
+import com.auri.core.collection.Collector
+import com.auri.core.collection.RawCollectedSample
 import com.auri.core.common.util.HashAlgorithms
 import com.auri.core.common.util.hashes
-import com.auri.core.data.entity.RawSampleEntity
-import com.auri.core.data.entity.RawSampleTable
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.coroutineScope
@@ -26,12 +28,19 @@ class CollectionService(
 ) {
     @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
     suspend fun startCollection() = coroutineScope {
+        if (missingCollectorDependencies()) return@coroutineScope
+
         collectors
             .map { collector ->
+                val collectorWorkingDirectory = File(workingDirectory, collector.name)
+                if (invalidateCache) {
+                    Logger.d { "Invalidating cache for collector ${collector.name}" }
+                    collectorWorkingDirectory.deleteRecursively()
+                }
+                collectorWorkingDirectory.mkdirs()
                 collector.samples(
                     Collector.CollectionParameters(
-                        workingDirectory = File(workingDirectory, collector.name).apply { mkdirs() },
-                        invalidateCache = invalidateCache
+                        workingDirectory = collectorWorkingDirectory
                     )
                 ).map { SampleWithSource(it, collector) }
             }
@@ -71,6 +80,23 @@ class CollectionService(
                     Logger.i { "Sample ${sample.name} saved to the database with ID ${savedEntity.id}" }
                 }
             }
+    }
+
+    private suspend fun missingCollectorDependencies(): Boolean {
+        val hasMissingDependencies = collectors.parMap {
+            val missingDependencies = it.checkDependencies().toNonEmptyListOrNull()
+                ?: return@parMap false
+            Logger.e {
+                val dependenciesList = missingDependencies.all.joinToString("\n") { dep ->
+                    "   - ${dep.name} (${dep.version ?: "any version"}) is needed for ${dep.use}. Resolution: ${dep.resolution}"
+                }
+                "Collector ${it.name} has missing dependencies, please install them before proceeding:\n$dependenciesList"
+            }
+            true
+        }.any { it }
+        if (hasMissingDependencies)
+            Logger.e { "Some collectors have missing dependencies, aborting collection" }
+        return hasMissingDependencies
     }
 
     private fun RawCollectedSample.hasValidFile(): Boolean {

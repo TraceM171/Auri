@@ -1,6 +1,6 @@
 package com.auri.conf.model
 
-import com.auri.core.collection.model.Collector
+import com.auri.core.collection.Collector
 
 
 data class CollectionPhaseConfig(

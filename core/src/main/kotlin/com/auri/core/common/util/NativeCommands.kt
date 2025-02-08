@@ -14,9 +14,14 @@ suspend fun runNativeCommand(
     workingDir: File? = null,
     vararg command: String
 ): Either<String, String> = withContext(Dispatchers.IO) {
-    val process = ProcessBuilder(*command).apply {
-        directory(workingDir)
-    }.start()
+    val process = runCatching {
+        ProcessBuilder(*command).apply {
+            directory(workingDir)
+        }.start()
+    }.getOrElse {
+        Logger.d(it) { "Error running command: ${command.joinToString(" ")}" }
+        return@withContext (it.message ?: "Unknown error").left()
+    }
     val outputAsync = async {
         process.inputStream.bufferedReader().useLines {
             it.onEach {
