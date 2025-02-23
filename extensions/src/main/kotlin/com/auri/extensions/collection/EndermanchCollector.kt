@@ -35,9 +35,6 @@ class EndermanchCollector(
         DependencyChecks.checkGitAvailable(
             use = "cloning the source repository",
         )?.let(::add)
-        DependencyChecks.checkGitAvailable(
-            use = "cloning the source repository",
-        )?.let(::add)
     }
 
     override fun samples(
