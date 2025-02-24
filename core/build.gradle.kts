@@ -12,7 +12,6 @@ dependencies {
     api(libs.touchlab.kermit)
     api(libs.kotlinx.datetime)
     api(libs.bundles.arrow)
-    api(libs.cronutils)
 
     implementation(libs.lingala.zip4j)
     implementation(libs.kotlin.coroutines)
