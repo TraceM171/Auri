@@ -9,6 +9,7 @@ import com.auri.core.collection.RawCollectedSample
 import com.auri.core.common.MissingDependency
 import com.auri.core.common.util.*
 import com.auri.extensions.common.sqliteConnection
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.datetime.toKotlinLocalDate
 import org.jetbrains.exposed.dao.IntEntity
@@ -20,6 +21,8 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 import java.net.URI
 import java.time.format.DateTimeFormatter
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.minutes
 
 class TheZooCollector(
     private val definition: Definition = Definition()
@@ -30,6 +33,12 @@ class TheZooCollector(
 
     data class Definition(
         val customName: String = "TheZoo",
+        val periodicClone: PeriodicActionConfig? = PeriodicActionConfig(
+            performEvery = 1.days,
+            maxRetriesPerPerform = 3,
+            skipPerformIfFailed = true,
+            retryEvery = 5.minutes
+        ),
         val gitRepo: GitRepo = GitRepo(
             url = URI.create("https://github.com/ytisf/theZoo.git").toURL(),
             branch = "master",
@@ -47,7 +56,17 @@ class TheZooCollector(
         )?.let(::add)
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun samples(
+        collectionParameters: Collector.CollectionParameters
+    ): Flow<RawCollectedSample> = if (definition.periodicClone == null) singleSamples(collectionParameters)
+    else definition.periodicClone.perform<Unit, Flow<RawCollectedSample>> {
+        singleSamples(collectionParameters)
+    }.flatMapConcat {
+        (it.getOrNull() ?: emptyFlow())
+    }
+
+    private fun singleSamples(
         collectionParameters: Collector.CollectionParameters
     ): Flow<RawCollectedSample> = flow {
         val theZooFolder = cloneRepo(

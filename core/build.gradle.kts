@@ -12,11 +12,12 @@ dependencies {
     api(libs.touchlab.kermit)
     api(libs.kotlinx.datetime)
     api(libs.bundles.arrow)
+    api(libs.cronutils)
 
     implementation(libs.lingala.zip4j)
     implementation(libs.kotlin.coroutines)
 
-    testImplementation(kotlin("test"))
+    testApi(libs.bundles.kotest)
 }
 
 idea {
@@ -32,4 +33,7 @@ tasks.test {
 
 kotlin {
     jvmToolchain(11)
+    compilerOptions {
+        freeCompilerArgs.add("-Xcontext-receivers")
+    }
 }

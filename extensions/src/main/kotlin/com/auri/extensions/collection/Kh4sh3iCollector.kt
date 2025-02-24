@@ -8,9 +8,12 @@ import com.auri.core.collection.Collector
 import com.auri.core.collection.RawCollectedSample
 import com.auri.core.common.MissingDependency
 import com.auri.core.common.util.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import java.io.File
 import java.net.URI
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.minutes
 
 class Kh4sh3iCollector(
     private val definition: Definition = Definition()
@@ -21,6 +24,12 @@ class Kh4sh3iCollector(
 
     data class Definition(
         val customName: String = "Kh4sh3i-RansomwareSamples",
+        val periodicClone: PeriodicActionConfig? = PeriodicActionConfig(
+            performEvery = 1.days,
+            maxRetriesPerPerform = 3,
+            skipPerformIfFailed = true,
+            retryEvery = 5.minutes
+        ),
         val gitRepo: GitRepo = GitRepo(
             url = URI.create("https://github.com/kh4sh3i/Ransomware-Samples.git").toURL(),
             branch = "main",
@@ -36,7 +45,17 @@ class Kh4sh3iCollector(
         )?.let(::add)
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun samples(
+        collectionParameters: Collector.CollectionParameters
+    ): Flow<RawCollectedSample> = if (definition.periodicClone == null) singleSamples(collectionParameters)
+    else definition.periodicClone.perform<Unit, Flow<RawCollectedSample>> {
+        singleSamples(collectionParameters)
+    }.flatMapConcat {
+        (it.getOrNull() ?: emptyFlow())
+    }
+
+    private fun singleSamples(
         collectionParameters: Collector.CollectionParameters
     ): Flow<RawCollectedSample> = flow {
         val repoFolder = cloneRepo(
