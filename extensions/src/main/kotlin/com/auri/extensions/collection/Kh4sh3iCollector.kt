@@ -23,7 +23,8 @@ class Kh4sh3iCollector(
         val customName: String = "Kh4sh3i-RansomwareSamples",
         val gitRepo: GitRepo = GitRepo(
             url = URI.create("https://github.com/kh4sh3i/Ransomware-Samples.git").toURL(),
-            branch = "main"
+            branch = "main",
+            commit = null
         ),
         val samplesPassword: String = "infected",
         val samplesMagicNumberFilter: List<MagicNumber> = MagicNumber.entries,

@@ -32,7 +32,8 @@ class TheZooCollector(
         val customName: String = "TheZoo",
         val gitRepo: GitRepo = GitRepo(
             url = URI.create("https://github.com/ytisf/theZoo.git").toURL(),
-            branch = "master"
+            branch = "master",
+            commit = null
         ),
         val samplesTypeFilter: Regex = Regex(".*"),
         val samplesArchFilter: Regex = Regex(".*"),

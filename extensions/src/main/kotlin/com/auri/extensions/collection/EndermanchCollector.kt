@@ -24,7 +24,8 @@ class EndermanchCollector(
         val customName: String = "Endermanch-MalwareDatabase",
         val gitRepo: GitRepo = GitRepo(
             url = URI.create("https://github.com/Endermanch/MalwareDatabase.git").toURL(),
-            branch = "master"
+            branch = "master",
+            commit = null
         ),
         val samplesFolderFilter: List<String> = listOf("ransomwares"),
         val samplesPassword: String = "mysubsarethebest",
