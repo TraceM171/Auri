@@ -12,6 +12,8 @@ dependencies {
     implementation(project(":core"))
 
     implementation(libs.bundles.exposed)
+    implementation(libs.bundles.ktor)
+    implementation(libs.skrapeit)
 
     testImplementation(kotlin("test"))
 }

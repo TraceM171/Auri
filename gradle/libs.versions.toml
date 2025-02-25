@@ -13,6 +13,8 @@ lingala-zip4j = "2.11.5"
 hoplite = "2.9.0"
 koin-bom = "4.0.2"
 classgraph = "4.8.179"
+ktor = "3.1.0"
+skrapeit = "1.2.2"
 
 [libraries]
 kotlin-coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlin-coroutines" }
@@ -38,12 +40,17 @@ hoplite-arrow = { module = "com.sksamuel.hoplite:hoplite-arrow", version.ref = "
 koin-bom = { module = "io.insert-koin:koin-bom", version.ref = "koin-bom" }
 koin-core = { module = "io.insert-koin:koin-core" }
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-auth = { module = "io.ktor:ktor-client-auth", version.ref = "ktor" }
+skrapeit = { module = "it.skrape:skrapeit", version.ref = "skrapeit" }
 
 [bundles]
 kotest = ["kotest-junit5", "kotest-assertions-core", "kotest-property", "kotest-arrow"]
 arrow = ["arrow-core", "arrow-coroutines", "arrow-resilience"]
 exposed = ["exposed-core", "exposed-jdbc", "xerial-sqlite", "exposed-dao", "exposed-kotlin-datetime"]
 hoplite = ["hoplite-core", "hoplite-yaml", "hoplite-arrow"]
+ktor = ["ktor-client-core", "ktor-client-okhttp", "ktor-client-auth"]
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

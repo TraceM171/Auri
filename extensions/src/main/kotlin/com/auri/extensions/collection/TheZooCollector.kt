@@ -3,7 +3,6 @@ package com.auri.extensions.collection
 import arrow.core.getOrElse
 import arrow.core.mapValuesNotNull
 import co.touchlab.kermit.Logger
-import com.auri.core.*
 import com.auri.core.collection.Collector
 import com.auri.core.collection.RawCollectedSample
 import com.auri.core.common.MissingDependency
@@ -33,7 +32,7 @@ class TheZooCollector(
 
     data class Definition(
         val customName: String = "TheZoo",
-        val periodicClone: PeriodicActionConfig? = PeriodicActionConfig(
+        val periodicity: PeriodicActionConfig? = PeriodicActionConfig(
             performEvery = 1.days,
             maxRetriesPerPerform = 3,
             skipPerformIfFailed = true,
@@ -59,8 +58,8 @@ class TheZooCollector(
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun samples(
         collectionParameters: Collector.CollectionParameters
-    ): Flow<RawCollectedSample> = if (definition.periodicClone == null) singleSamples(collectionParameters)
-    else definition.periodicClone.perform<Unit, Flow<RawCollectedSample>> {
+    ): Flow<RawCollectedSample> = if (definition.periodicity == null) singleSamples(collectionParameters)
+    else definition.periodicity.perform<Unit, Flow<RawCollectedSample>> {
         singleSamples(collectionParameters)
     }.flatMapConcat {
         (it.getOrNull() ?: emptyFlow())
