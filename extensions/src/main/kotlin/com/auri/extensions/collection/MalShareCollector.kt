@@ -8,7 +8,10 @@ import arrow.core.raise.ensure
 import co.touchlab.kermit.Logger
 import com.auri.core.collection.Collector
 import com.auri.core.collection.RawCollectedSample
-import com.auri.core.common.util.*
+import com.auri.core.common.util.MagicNumber
+import com.auri.core.common.util.PeriodicActionConfig
+import com.auri.core.common.util.magicNumber
+import com.auri.core.common.util.perform
 import io.ktor.client.*
 import io.ktor.client.plugins.*
 import io.ktor.client.request.*
@@ -51,7 +54,6 @@ class MalShareCollector(
         ),
         val endpointUrl: URL = URI.create("https://malshare.com/api.php").toURL(),
         val apiKey: String,
-        val samplesPassword: String = "TODO",
         val samplesMagicNumberFilter: List<MagicNumber> = MagicNumber.entries,
     )
 
@@ -75,7 +77,7 @@ class MalShareCollector(
         collectionParameters: Collector.CollectionParameters
     ): Flow<RawCollectedSample> = flow {
         Logger.i { "Getting samples hashes" }
-        val samplesLinks = api.samplesHashes().getOrElse {
+        val samplesHashes = api.samplesHashes().getOrElse {
             Logger.e("Failed to get samples hashes")
             return@flow
         }.also {
@@ -86,49 +88,30 @@ class MalShareCollector(
             .map { it.name }
             .toSet()
         Logger.i { "Found ${alreadyDownloadedSamples.size} already downloaded samples" }
-        val newSamples = samplesLinks.filter { it.sha1 !in alreadyDownloadedSamples }
+        val newSamples = samplesHashes.filter { it.sha1 !in alreadyDownloadedSamples }
         Logger.i { "Found ${newSamples.size} new samples" }
-        samplesLinks.forEach { sampleLink ->
-            val destination = File(collectionParameters.workingDirectory, sampleLink.sha1)
-            if (sampleLink in newSamples) {
-                Logger.i { "Downloading sample ${sampleLink.sha1}" }
-                api.downloadSample(sampleLink, destination).getOrElse {
-                    Logger.e { "Failed to download sample ${sampleLink.sha1}" }
+        samplesHashes.forEach { sampleHashes ->
+            val destination = File(collectionParameters.workingDirectory, sampleHashes.sha1)
+            if (sampleHashes in newSamples) {
+                Logger.i { "Downloading sample ${sampleHashes.sha1}" }
+                api.downloadSample(sampleHashes, destination).getOrElse {
+                    Logger.e { "Failed to download sample ${sampleHashes.sha1}" }
                     return@forEach
                 }
-                Logger.i { "Successfully downloaded sample ${sampleLink.sha1}" }
+                Logger.i { "Successfully downloaded sample ${sampleHashes.sha1}" }
             }
-            val extractedSamples = extractSamples(destination)
-            extractedSamples.forEach { sample ->
-                emit(
-                    RawCollectedSample(
-                        submissionDate = LocalDate.now().toKotlinLocalDate(),
-                        name = sample.nameWithoutExtension,
-                        executable = sample
-                    )
+            if (destination.magicNumber() !in definition.samplesMagicNumberFilter) {
+                Logger.i { "Skipping sample ${sampleHashes.sha1} because of its magic number" }
+                return@forEach
+            }
+            emit(
+                RawCollectedSample(
+                    submissionDate = LocalDate.now().toKotlinLocalDate(),
+                    name = destination.nameWithoutExtension,
+                    executable = destination
                 )
-            }
+            )
         }
-    }
-
-    private fun extractSamples(
-        zipFile: File
-    ): List<File> {
-        val destinationDir = File(zipFile.parent, zipFile.nameWithoutExtension)
-        if (!destinationDir.exists()) {
-            Logger.d { "Extracting ${zipFile.nameWithoutExtension} with password ${definition.samplesPassword}" }
-            zipFile.unzip(destinationDirectory = destinationDir, password = definition.samplesPassword)
-            Logger.d { "Successfully extracted ${zipFile.name}" }
-        }
-        Logger.d { "Searching for extracted executables" }
-        val executables = destinationDir.walkTopDown()
-            .filter { file -> file.magicNumber() in definition.samplesMagicNumberFilter }
-            .toList()
-        if (executables.isEmpty())
-            Logger.d { "No executable found for sample ${zipFile.nameWithoutExtension}" }
-        else
-            Logger.d { "Found ${executables.size} executables for sample ${zipFile.nameWithoutExtension}" }
-        return executables
     }
 
     private class Api(
