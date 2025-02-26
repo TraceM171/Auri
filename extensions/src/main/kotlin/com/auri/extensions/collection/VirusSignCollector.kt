@@ -142,99 +142,100 @@ class VirusSignCollector(
             Logger.d { "Found ${executables.size} executables for sample ${zipFile.nameWithoutExtension}" }
         return executables
     }
-}
 
-private class Api(
-    private val directoryListingUrl: URL,
-    private val apiUser: String,
-    private val apiPassword: String,
-    private val maxDepth: Int
-) : AutoCloseable {
-    private val client = HttpClient {
-        install(Auth) {
-            basic {
-                credentials {
-                    BasicAuthCredentials(apiUser, apiPassword)
+
+    private class Api(
+        private val directoryListingUrl: URL,
+        private val apiUser: String,
+        private val apiPassword: String,
+        private val maxDepth: Int
+    ) : AutoCloseable {
+        private val client = HttpClient {
+            install(Auth) {
+                basic {
+                    credentials {
+                        BasicAuthCredentials(apiUser, apiPassword)
+                    }
                 }
             }
         }
-    }
 
-    suspend fun samplesLinks(): Either<Unit, List<SampleLink>> = either {
-        val baseUrl = directoryListingUrl.toString().removeSuffix(directoryListingUrl.path)
-        val dateRegex = Regex("""\d{8}|\d{6}""")
-        val rawLinksList = getLinksInPath(null, 0).bind()
-        Logger.i { "Found ${rawLinksList.size} links" }
-        rawLinksList.mapNotNull {
-            val dateString = dateRegex.find(it)?.value ?: return@mapNotNull SampleLink(URI.create(it).toURL())
-            val date = when (dateString.length) {
-                6 -> LocalDate(
-                    year = dateString.substring(0, 2).toInt() + 2000,
-                    monthNumber = dateString.substring(2, 4).toInt(),
-                    dayOfMonth = dateString.substring(4).toInt()
-                )
+        suspend fun samplesLinks(): Either<Unit, List<SampleLink>> = either {
+            val baseUrl = directoryListingUrl.toString().removeSuffix(directoryListingUrl.path)
+            val dateRegex = Regex("""\d{8}|\d{6}""")
+            val rawLinksList = getLinksInPath(null, 0).bind()
+            Logger.i { "Found ${rawLinksList.size} links" }
+            rawLinksList.mapNotNull {
+                val dateString = dateRegex.find(it)?.value ?: return@mapNotNull SampleLink(URI.create(it).toURL())
+                val date = when (dateString.length) {
+                    6 -> LocalDate(
+                        year = dateString.substring(0, 2).toInt() + 2000,
+                        monthNumber = dateString.substring(2, 4).toInt(),
+                        dayOfMonth = dateString.substring(4).toInt()
+                    )
 
-                8 -> LocalDate(
-                    year = dateString.substring(0, 4).toInt(),
-                    monthNumber = dateString.substring(4, 6).toInt(),
-                    dayOfMonth = dateString.substring(6).toInt()
-                )
+                    8 -> LocalDate(
+                        year = dateString.substring(0, 4).toInt(),
+                        monthNumber = dateString.substring(4, 6).toInt(),
+                        dayOfMonth = dateString.substring(6).toInt()
+                    )
 
-                else -> return@mapNotNull null
+                    else -> return@mapNotNull null
+                }
+                SampleLink(URI.create("$baseUrl$it").toURL(), date)
+            }.sortedBy { it.date }
+        }
+
+        suspend fun downloadSample(
+            sampleLink: SampleLink,
+            destination: File
+        ): Either<Unit, Unit> = either {
+            destination.parentFile.mkdirs()
+            val response = client.get(sampleLink.url.toString())
+            ensure(response.status.isSuccess()) {
+                Logger.e { "Failed to download sample from ${sampleLink.url}" }
             }
-            SampleLink(URI.create("$baseUrl$it").toURL(), date)
-        }.sortedBy { it.date }
-    }
-
-    suspend fun downloadSample(
-        sampleLink: SampleLink,
-        destination: File
-    ): Either<Unit, Unit> = either {
-        destination.parentFile.mkdirs()
-        val response = client.get(sampleLink.url.toString())
-        ensure(response.status.isSuccess()) {
-            Logger.e { "Failed to download sample from ${sampleLink.url}" }
+            val body = response.bodyAsChannel()
+            destination.outputStream().asByteWriteChannel().use { body.copyTo(this) }
         }
-        val body = response.bodyAsChannel()
-        destination.outputStream().asByteWriteChannel().use { body.copyTo(this) }
-    }
 
-    private suspend fun getLinksInPath(
-        path: String?,
-        currentDepth: Int
-    ): Either<Unit, List<String>> = either {
-        val response = client.get {
-            url {
-                takeFrom(directoryListingUrl)
-                path?.let { path(it) }
+        private suspend fun getLinksInPath(
+            path: String?,
+            currentDepth: Int
+        ): Either<Unit, List<String>> = either {
+            val response = client.get {
+                url {
+                    takeFrom(directoryListingUrl)
+                    path?.let { path(it) }
+                }
             }
-        }
-        ensure(response.status.isSuccess()) {
-            Logger.e { "Failed to fetch directory listing from $directoryListingUrl" }
-        }
+            ensure(response.status.isSuccess()) {
+                Logger.e { "Failed to fetch directory listing from $directoryListingUrl" }
+            }
 
-        val body = response.bodyAsText()
-        val allLinks = htmlDocument(body) {
-            a { findAll { eachHref } }
-        }
-        buildList {
-            allLinks.forEach {
-                when {
-                    it.endsWith("/") && it != "/" && currentDepth < maxDepth ->
-                        getLinksInPath(it, currentDepth + 1).onRight(::addAll)
+            val body = response.bodyAsText()
+            val allLinks = htmlDocument(body) {
+                a { findAll { eachHref } }
+            }
+            buildList {
+                allLinks.forEach {
+                    when {
+                        it.endsWith("/") && it != "/" && currentDepth < maxDepth ->
+                            getLinksInPath(it, currentDepth + 1).onRight(::addAll)
 
-                    it.endsWith(".zip") -> add(it)
+                        it.endsWith(".zip") -> add(it)
+                    }
                 }
             }
         }
-    }
 
-    override fun close() {
-        client.close()
-    }
+        override fun close() {
+            client.close()
+        }
 
-    data class SampleLink(
-        val url: URL,
-        val date: LocalDate? = null
-    )
+        data class SampleLink(
+            val url: URL,
+            val date: LocalDate? = null
+        )
+    }
 }
