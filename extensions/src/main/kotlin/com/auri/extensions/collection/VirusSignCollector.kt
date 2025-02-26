@@ -31,6 +31,7 @@ import kotlinx.datetime.toKotlinLocalDate
 import java.io.File
 import java.net.URI
 import java.net.URL
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 
 class VirusSignCollector(
@@ -43,7 +44,7 @@ class VirusSignCollector(
     data class Definition(
         val customName: String = "VirusSign",
         val periodicity: PeriodicActionConfig? = PeriodicActionConfig(
-            performEvery = 2.minutes,
+            performEvery = 1.days,
             maxRetriesPerPerform = 3,
             skipPerformIfFailed = true,
             retryEvery = 5.minutes
