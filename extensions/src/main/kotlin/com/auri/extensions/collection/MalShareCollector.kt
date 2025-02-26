@@ -82,22 +82,22 @@ class MalShareCollector(
             Logger.i { "Found ${it.size} samples hashes" }
         }
         val alreadyDownloadedSamples = collectionParameters.workingDirectory
-            .listFiles { _, name -> name.endsWith(".zip") }
+            .listFiles()
             .map { it.name }
             .toSet()
         Logger.i { "Found ${alreadyDownloadedSamples.size} already downloaded samples" }
-//        val newSamples = samplesLinks.filter { File(it.url.path).name !in alreadyDownloadedSamples }
-//        Logger.i { "Found ${newSamples.size} new samples" }
+        val newSamples = samplesLinks.filter { it.sha1 !in alreadyDownloadedSamples }
+        Logger.i { "Found ${newSamples.size} new samples" }
         samplesLinks.forEach { sampleLink ->
             val destination = File(collectionParameters.workingDirectory, sampleLink.sha1)
-//            if (sampleLink in newSamples) {
-            Logger.i { "Downloading sample ${sampleLink.sha1}" }
-            api.downloadSample(sampleLink, destination).getOrElse {
-                Logger.e { "Failed to download sample ${sampleLink.sha1}" }
-                return@forEach
+            if (sampleLink in newSamples) {
+                Logger.i { "Downloading sample ${sampleLink.sha1}" }
+                api.downloadSample(sampleLink, destination).getOrElse {
+                    Logger.e { "Failed to download sample ${sampleLink.sha1}" }
+                    return@forEach
+                }
+                Logger.i { "Successfully downloaded sample ${sampleLink.sha1}" }
             }
-            Logger.i { "Successfully downloaded sample ${sampleLink.sha1}" }
-//            }
             val extractedSamples = extractSamples(destination)
             extractedSamples.forEach { sample ->
                 emit(
