@@ -41,7 +41,12 @@ class MalShareCollector(
     private val definition: Definition
 ) : Collector {
     override val name: String = definition.customName
-    override val description: String = "Collect free daily samples from MalShare"
+    override val description: String = """
+        Collect free daily samples from MalShare.
+        Does not allow filtering.
+        Limitations:
+        - 2000 api calls per day (including downloads, searches, etc.)
+    """.trimIndent()
     override val version: String = "0.0.1"
 
     data class Definition(
