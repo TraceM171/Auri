@@ -2,7 +2,6 @@ package com.auri.core.common.util
 
 import arrow.core.raise.either
 import co.touchlab.kermit.Logger
-import com.auri.core.collection.Collector
 import java.io.File
 import java.net.URL
 
@@ -12,12 +11,12 @@ data class GitRepo(
     val commit: String?
 )
 
-suspend fun Collector.cloneRepo(
-    collectionParameters: Collector.CollectionParameters,
+suspend fun cloneRepo(
+    workingDirectory: File,
     gitRepo: GitRepo
 ) = either {
     val repoFolder = File(
-        collectionParameters.workingDirectory,
+        workingDirectory,
         gitRepo.url.path.substringAfterLast("/").substringBeforeLast(".")
     ).apply { mkdirs() }
     val repoRoot = runNativeCommand(
@@ -31,7 +30,7 @@ suspend fun Collector.cloneRepo(
     val existsRepo = File(repoRoot) == repoFolder
 
     if (existsRepo) { // Repository already exists
-        Logger.d { "$name repository already exists, checking if updated" }
+        Logger.d { "Repository already exists, checking if updated" }
         runNativeCommand(
             workingDir = repoFolder,
             "git",
@@ -39,16 +38,16 @@ suspend fun Collector.cloneRepo(
             "origin",
             gitRepo.branch
         ).onLeft {
-            Logger.e { "Failed to fetch $name repository: $it" }
+            Logger.e { "Failed to fetch repository: $it" }
         }.mapLeft { }.bind()
-        Logger.d { "Successfully fetched $name repository" }
+        Logger.d { "Successfully fetched repository" }
         val currentCommit = runNativeCommand(
             workingDir = repoFolder,
             "git",
             "rev-parse",
             "HEAD"
         ).onLeft {
-            Logger.e { "Failed to get current commit of $name repository: $it" }
+            Logger.e { "Failed to get current commit of repository: $it" }
         }.mapLeft { }.bind()
         val remoteCommit = runNativeCommand(
             workingDir = repoFolder,
@@ -56,13 +55,13 @@ suspend fun Collector.cloneRepo(
             "rev-parse",
             "origin/${gitRepo.branch}"
         ).onLeft {
-            Logger.e { "Failed to get remote commit of $name repository: $it" }
+            Logger.e { "Failed to get remote commit of repository: $it" }
         }.mapLeft { }.bind()
         if (currentCommit == remoteCommit || gitRepo.commit == currentCommit) { // Repository is up to date or at the specified commit
-            Logger.d { "$name repository is up to date" }
+            Logger.d { "Repository is up to date" }
             return@either repoFolder
         }
-        Logger.d { "$name repository is outdated, updating" } // Repository is outdated
+        Logger.d { "Repository is outdated, updating" } // Repository is outdated
         runNativeCommand(
             workingDir = repoFolder,
             "git",
@@ -70,15 +69,15 @@ suspend fun Collector.cloneRepo(
             "--hard",
             "origin/${gitRepo.branch}"
         ).onLeft {
-            Logger.e { "Failed to reset $name repository: $it" }
+            Logger.e { "Failed to reset repository: $it" }
         }.mapLeft { }.bind()
-        Logger.d { "Successfully updated $name repository" }
+        Logger.d { "Successfully updated repository" }
         return@either repoFolder
     }
 
-    Logger.d { "Cloning $name repository (${gitRepo.url}) to $repoFolder" } // Repository does not exist
+    Logger.d { "Cloning repository (${gitRepo.url}) to $repoFolder" } // Repository does not exist
     runNativeCommand(
-        workingDir = collectionParameters.workingDirectory,
+        workingDir = workingDirectory,
         "git",
         "clone",
         gitRepo.url.toString(),
@@ -89,9 +88,9 @@ suspend fun Collector.cloneRepo(
         "--depth",
         "1"
     ).onLeft {
-        Logger.e { "Failed to clone $name repository: $it" }
+        Logger.e { "Failed to clone repository: $it" }
     }.mapLeft { }.bind()
-    Logger.d { "Successfully cloned $name repository" }
+    Logger.d { "Successfully cloned repository" }
     if (gitRepo.commit != null) {
         Logger.d { "Checking out commit ${gitRepo.commit}" }
         runNativeCommand(
