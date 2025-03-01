@@ -1,8 +1,8 @@
 package com.auri.collection
 
 import arrow.core.toNonEmptyListOrNull
+import arrow.fx.coroutines.parMap
 import arrow.fx.coroutines.parMapNotNull
-import arrow.fx.coroutines.parMapNotNullUnordered
 import co.touchlab.kermit.Logger
 import com.auri.common.data.entity.RawSampleEntity
 import com.auri.common.data.entity.RawSampleTable
@@ -20,8 +20,8 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 
 class CollectionService(
-    private val workingDirectory: File,
-    private val invalidateCache: Boolean,
+    private val cacheDir: File,
+    private val samplesDir: File,
     private val auriDB: Database,
     private val collectors: List<Collector>
 ) {
@@ -49,11 +49,7 @@ class CollectionService(
 
         collectors
             .map { collector ->
-                val collectorWorkingDirectory = File(workingDirectory, collector.name)
-                if (invalidateCache) {
-                    Logger.d { "Invalidating cache for collector ${collector.name}" }
-                    collectorWorkingDirectory.deleteRecursively()
-                }
+                val collectorWorkingDirectory = File(cacheDir, collector.name)
                 collectorWorkingDirectory.mkdirs()
                 collector.start(
                     Collector.CollectionParameters(
@@ -62,18 +58,19 @@ class CollectionService(
                 ).map { collector to it }
             }
             .merge()
-            .parMapNotNullUnordered { (collector, status) ->
+            .parMap { (collector, status) ->
                 updateStatusForCollector(collector, status)
-                val newSampleStatus = (status as? CollectorStatus.NewSample) ?: return@parMapNotNullUnordered null
+                val newSampleStatus = (status as? CollectorStatus.NewSample) ?: return@parMap null
                 if (!newSampleStatus.sample.hasValidFile()) {
                     Logger.w { "Invalid file for sample ${newSampleStatus.sample.name}, emitted by ${collector.name}: ${newSampleStatus.sample.executable}" }
-                    return@parMapNotNullUnordered null
+                    return@parMap null
                 }
                 val hashes = newSampleStatus.sample.executable.hashes(
                     HashAlgorithms.MD5, HashAlgorithms.SHA1, HashAlgorithms.SHA256
                 )
                 SampleWithSourceAndHashes(newSampleStatus.sample, collector, hashes)
-            }.onCompletion {
+            }.filterNotNull()
+            .onCompletion {
                 _collectionStatus.update {
                     CollectionProcessStatus.Finished(
                         collectorsStatus = (it as? CollectionProcessStatus.Collecting)?.collectorsStatus ?: emptyMap(),
@@ -83,16 +80,13 @@ class CollectionService(
                     )
                 }
             }.collect { (sample, source, hashes) ->
-                transaction(auriDB) {
+                val sampleFile = File(samplesDir, hashes[HashAlgorithms.SHA1]!!)
+                val addedToDB = transaction(auriDB) {
                     RawSampleEntity.find {
                         RawSampleTable.sha256 eq hashes[HashAlgorithms.SHA256]!!
                     }.firstOrNull()?.let {
                         Logger.i { "Sample ${sample.name} already exists in the database, skipping" }
-                        return@transaction
-                    }
-                    val relativePath = sample.executable.relativeToOrNull(workingDirectory)?.path ?: run {
-                        Logger.w { "Failed to get relative path for sample ${sample.name}, it will not be saved to the database" }
-                        return@transaction
+                        return@transaction false
                     }
                     val savedEntity = RawSampleEntity.new {
                         this.md5 = hashes[HashAlgorithms.MD5]!!
@@ -101,12 +95,15 @@ class CollectionService(
                         this.name = sample.name
                         this.sourceName = source.name
                         this.sourceVersion = source.version
-                        this.path = relativePath
+                        this.path = sampleFile.relativeTo(samplesDir).path
                         this.collectionDate = java.time.LocalDate.now().toKotlinLocalDate()
                         this.submissionDate = sample.submissionDate
                     }
                     Logger.i { "Sample ${sample.name} saved to the database with ID ${savedEntity.id}" }
+                    true
                 }
+                if (!addedToDB) return@collect
+                sample.executable.copyTo(sampleFile)
                 _collectionStatus.update { currentStatus ->
                     (currentStatus as? CollectionProcessStatus.Collecting)
                         ?.let {

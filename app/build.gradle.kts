@@ -8,6 +8,7 @@ group = "com.auri"
 version = "0.0.1"
 
 application {
+    applicationName = "auri"
     mainClass = "com.auri.cli.ConsoleAppKt"
 }
 

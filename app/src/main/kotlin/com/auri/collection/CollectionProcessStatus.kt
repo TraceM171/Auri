@@ -8,6 +8,7 @@ import com.auri.core.common.MissingDependency
 sealed interface CollectionProcessStatus {
     data object NotStarted : CollectionProcessStatus
     data object Initializing : CollectionProcessStatus
+    data class Failed(val what: String, val why: String) : CollectionProcessStatus
     data class MissingDependencies(val missingDependencies: Map<Collector, Nel<MissingDependency>>) :
         CollectionProcessStatus
 

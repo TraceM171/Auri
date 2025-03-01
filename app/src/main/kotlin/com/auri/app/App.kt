@@ -1,5 +1,9 @@
 package com.auri.app
 
+import arrow.core.getOrElse
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
+import com.auri.collection.CollectionProcessStatus
 import com.auri.collection.CollectionService
 import com.auri.common.data.sqliteConnection
 import com.auri.common.withExtensions
@@ -7,32 +11,68 @@ import com.auri.conf.configByPrefix
 import com.auri.conf.model.CollectionPhaseConfig
 import com.auri.conf.model.MainConf
 import com.auri.core.common.util.chainIfNotNull
-import kotlinx.coroutines.coroutineScope
+import com.auri.core.common.util.getResource
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 
-suspend fun collectSamples(
-    configFile: File,
-) = coroutineScope {
-    val workingDirectory = File("/home/auri/TFM/auri/scratch")
-    val auriDB = File(workingDirectory, "auri.db")
+fun CoroutineScope.launchSampleCollection(
+    baseDirectory: File,
+    runbook: File,
+    pruneCache: Boolean
+): StateFlow<CollectionProcessStatus> {
+    val cacheDir = File(baseDirectory, "cache/collection")
+    val samplesDir = File(baseDirectory, "samples")
+    val extensionsDir = File(baseDirectory, "extensions")
+    val auriDB = File(baseDirectory, "auri.db")
 
-    val mainConfig: MainConf = configFile.configByPrefix()
+    Logger.setMinSeverity(Severity.Warn) // TODO
+
+    if (pruneCache) {
+        cacheDir.deleteRecursively()
+    }
+
+    baseDirectory.mkdirs()
+    cacheDir.mkdirs()
+    samplesDir.mkdirs()
+    extensionsDir.mkdirs()
+    if (!auriDB.exists()) {
+        auriDB.outputStream().use { output ->
+            getResource("auri.db")?.use { input ->
+                input.copyTo(output)
+            } ?: error("Could not find auri.db in resources")
+        }
+    }
+
+    runbook.configByPrefix<MainConf>().getOrElse {
+        return MutableStateFlow(
+            CollectionProcessStatus.Failed(
+                what = "Failed to load main segment of runbook",
+                why = it.message ?: "Unknown error"
+            )
+        )
+    }
     val classLoader = Thread.currentThread().contextClassLoader
-        .chainIfNotNull(mainConfig.extensionsFolder) { withExtensions(it) }
-    val phaseConfig: CollectionPhaseConfig =
-        configFile.configByPrefix(classLoader = classLoader, prefix = "collectionPhase")
+        .chainIfNotNull(extensionsDir) { withExtensions(it) }
+    val phaseConfig =
+        runbook.configByPrefix<CollectionPhaseConfig>(classLoader = classLoader, prefix = "collectionPhase").getOrElse {
+            return MutableStateFlow(
+                CollectionProcessStatus.Failed(
+                    what = "Failed to load collection phase segment of runbook",
+                    why = it.message ?: "Unknown error"
+                )
+            )
+        }
 
     val collectionService = CollectionService(
-        workingDirectory = workingDirectory,
-        invalidateCache = false,
+        cacheDir = cacheDir,
+        samplesDir = samplesDir,
         auriDB = auriDB.let(::sqliteConnection),
         collectors = phaseConfig.collectors,
     )
-    launch {
-        collectionService.collectionStatus.collect {
-            println(it)
-        }
-    }
     launch { collectionService.run() }
+
+    return collectionService.collectionStatus
 }
