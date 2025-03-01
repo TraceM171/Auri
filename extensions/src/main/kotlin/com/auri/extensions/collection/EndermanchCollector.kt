@@ -3,9 +3,12 @@ package com.auri.extensions.collection
 import arrow.core.getOrElse
 import co.touchlab.kermit.Logger
 import com.auri.core.collection.Collector
+import com.auri.core.collection.CollectorStatus
+import com.auri.core.collection.CollectorStatus.*
 import com.auri.core.collection.RawCollectedSample
 import com.auri.core.common.MissingDependency
 import com.auri.core.common.util.*
+import com.auri.extensions.collection.common.periodicCollection
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import java.io.File
@@ -45,23 +48,27 @@ class EndermanchCollector(
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    override fun samples(
+    override fun start(
         collectionParameters: Collector.CollectionParameters
-    ): Flow<RawCollectedSample> = if (definition.periodicity == null) singleSamples(collectionParameters)
-    else definition.periodicity.perform<Unit, Flow<RawCollectedSample>> {
-        singleSamples(collectionParameters)
-    }.flatMapConcat {
-        (it.getOrNull() ?: emptyFlow())
-    }
+    ): Flow<CollectorStatus> = periodicCollection(
+        periodicity = definition.periodicity,
+        collectionParameters = collectionParameters,
+        singleCollection = ::singleSamples
+    )
 
     private fun singleSamples(
         collectionParameters: Collector.CollectionParameters
-    ): Flow<RawCollectedSample> = flow {
+    ): Flow<CollectorStatus> = flow {
+        emit(Downloading(what = "Repository"))
         val repoFolder = cloneRepo(
-            gitRepo = definition.gitRepo,
-            collectionParameters = collectionParameters,
-        ).getOrElse { return@flow }
+            workingDirectory = collectionParameters.workingDirectory,
+            gitRepo = definition.gitRepo
+        ).getOrElse {
+            emit(Failed(what = "Clone repository", why = it))
+            return@flow
+        }
 
+        emit(Processing(what = "Extract samples"))
         val extractedSamples = repoFolder.listFiles()!!
             .asSequence()
             .filter { it.isDirectory }
@@ -81,8 +88,10 @@ class EndermanchCollector(
                 )
             }
         }.flatten()
+            .asFlow()
+            .map { NewSample(it) }
 
-        emitAll(rawSamples.asFlow())
+        emitAll(rawSamples)
     }
 
     private fun extractSamples(

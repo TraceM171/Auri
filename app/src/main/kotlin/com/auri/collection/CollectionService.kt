@@ -1,20 +1,19 @@
 package com.auri.collection
 
 import arrow.core.toNonEmptyListOrNull
-import arrow.fx.coroutines.parMap
+import arrow.fx.coroutines.parMapNotNull
 import arrow.fx.coroutines.parMapNotNullUnordered
 import co.touchlab.kermit.Logger
 import com.auri.common.data.entity.RawSampleEntity
 import com.auri.common.data.entity.RawSampleTable
 import com.auri.core.collection.Collector
+import com.auri.core.collection.CollectorStatus
 import com.auri.core.collection.RawCollectedSample
 import com.auri.core.common.util.HashAlgorithms
 import com.auri.core.common.util.hashes
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.*
 import kotlinx.datetime.toKotlinLocalDate
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -26,9 +25,27 @@ class CollectionService(
     private val auriDB: Database,
     private val collectors: List<Collector>
 ) {
+    private val _collectionStatus: MutableStateFlow<CollectionProcessStatus> =
+        MutableStateFlow(CollectionProcessStatus.NotStarted)
+    val collectionStatus = _collectionStatus.asStateFlow()
+
     @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
-    suspend fun startCollection() = coroutineScope {
-        if (missingCollectorDependencies()) return@coroutineScope
+    suspend fun run() {
+        _collectionStatus.update { CollectionProcessStatus.Initializing }
+        val missingDependencies = collectors.parMapNotNull { collector ->
+            collector.checkDependencies().toNonEmptyListOrNull()?.let { collector to it }
+        }.associate { it }
+        if (missingDependencies.isNotEmpty()) {
+            _collectionStatus.update { CollectionProcessStatus.MissingDependencies(missingDependencies) }
+            return
+        }
+        _collectionStatus.update {
+            CollectionProcessStatus.Collecting(
+                collectorsStatus = collectors.associateWith { null },
+                samplesCollectedByCollector = collectors.associateWith { 0 },
+                totalSamplesCollected = 0
+            )
+        }
 
         collectors
             .map { collector ->
@@ -38,22 +55,33 @@ class CollectionService(
                     collectorWorkingDirectory.deleteRecursively()
                 }
                 collectorWorkingDirectory.mkdirs()
-                collector.samples(
+                collector.start(
                     Collector.CollectionParameters(
                         workingDirectory = collectorWorkingDirectory
                     )
-                ).map { SampleWithSource(it, collector) }
+                ).map { collector to it }
             }
             .merge()
-            .parMapNotNullUnordered {
-                if (!it.sample.hasValidFile()) {
-                    Logger.w { "Invalid file for sample ${it.sample.name}, emitted by ${it.source.name}: ${it.sample.executable}" }
+            .parMapNotNullUnordered { (collector, status) ->
+                updateStatusForCollector(collector, status)
+                val newSampleStatus = (status as? CollectorStatus.NewSample) ?: return@parMapNotNullUnordered null
+                if (!newSampleStatus.sample.hasValidFile()) {
+                    Logger.w { "Invalid file for sample ${newSampleStatus.sample.name}, emitted by ${collector.name}: ${newSampleStatus.sample.executable}" }
                     return@parMapNotNullUnordered null
                 }
-                val hashes = it.sample.executable.hashes(
+                val hashes = newSampleStatus.sample.executable.hashes(
                     HashAlgorithms.MD5, HashAlgorithms.SHA1, HashAlgorithms.SHA256
                 )
-                SampleWithSourceAndHashes(it.sample, it.source, hashes)
+                SampleWithSourceAndHashes(newSampleStatus.sample, collector, hashes)
+            }.onCompletion {
+                _collectionStatus.update {
+                    CollectionProcessStatus.Finished(
+                        collectorsStatus = (it as? CollectionProcessStatus.Collecting)?.collectorsStatus ?: emptyMap(),
+                        samplesCollectedByCollector = (it as? CollectionProcessStatus.Collecting)?.samplesCollectedByCollector
+                            ?: emptyMap(),
+                        totalSamplesCollected = (it as? CollectionProcessStatus.Collecting)?.totalSamplesCollected ?: 0
+                    )
+                }
             }.collect { (sample, source, hashes) ->
                 transaction(auriDB) {
                     RawSampleEntity.find {
@@ -79,24 +107,33 @@ class CollectionService(
                     }
                     Logger.i { "Sample ${sample.name} saved to the database with ID ${savedEntity.id}" }
                 }
+                _collectionStatus.update { currentStatus ->
+                    (currentStatus as? CollectionProcessStatus.Collecting)
+                        ?.let {
+                            it.copy(
+                                samplesCollectedByCollector = it.samplesCollectedByCollector.toMutableMap().apply {
+                                    this[source] = (this[source] ?: 0) + 1
+                                },
+                                totalSamplesCollected = it.totalSamplesCollected + 1
+                            )
+                        } ?: currentStatus
+                }
             }
     }
 
-    private suspend fun missingCollectorDependencies(): Boolean {
-        val hasMissingDependencies = collectors.parMap {
-            val missingDependencies = it.checkDependencies().toNonEmptyListOrNull()
-                ?: return@parMap false
-            Logger.e {
-                val dependenciesList = missingDependencies.all.joinToString("\n") { dep ->
-                    "   - ${dep.name} (${dep.version ?: "any version"}) is needed for ${dep.use}. Resolution: ${dep.resolution}"
-                }
-                "Collector ${it.name} has missing dependencies, please install them before proceeding:\n$dependenciesList"
+    private fun updateStatusForCollector(
+        collector: Collector,
+        status: CollectorStatus
+    ) = _collectionStatus.update { currentStatus ->
+        (currentStatus as? CollectionProcessStatus.Collecting)
+            ?.let {
+                it.copy(
+                    it.collectorsStatus.toMutableMap().apply {
+                        this[collector] = status
+                    }
+                )
             }
-            true
-        }.any { it }
-        if (hasMissingDependencies)
-            Logger.e { "Some collectors have missing dependencies, aborting collection" }
-        return hasMissingDependencies
+            ?: currentStatus
     }
 
     private fun RawCollectedSample.hasValidFile(): Boolean {
@@ -105,11 +142,6 @@ class CollectionService(
         if (!executable.canRead()) return false
         return true
     }
-
-    private data class SampleWithSource(
-        val sample: RawCollectedSample,
-        val source: Collector
-    )
 
     private data class SampleWithSourceAndHashes(
         val sample: RawCollectedSample,

@@ -26,7 +26,7 @@ suspend fun cloneRepo(
         "--show-toplevel"
     ).onLeft {
         Logger.e { "Failed to get repository root: $it" }
-    }.mapLeft { }.bind()
+    }.bind()
     val existsRepo = File(repoRoot) == repoFolder
 
     if (existsRepo) { // Repository already exists
@@ -39,7 +39,7 @@ suspend fun cloneRepo(
             gitRepo.branch
         ).onLeft {
             Logger.e { "Failed to fetch repository: $it" }
-        }.mapLeft { }.bind()
+        }.bind()
         Logger.d { "Successfully fetched repository" }
         val currentCommit = runNativeCommand(
             workingDir = repoFolder,
@@ -48,7 +48,7 @@ suspend fun cloneRepo(
             "HEAD"
         ).onLeft {
             Logger.e { "Failed to get current commit of repository: $it" }
-        }.mapLeft { }.bind()
+        }.bind()
         val remoteCommit = runNativeCommand(
             workingDir = repoFolder,
             "git",
@@ -56,7 +56,7 @@ suspend fun cloneRepo(
             "origin/${gitRepo.branch}"
         ).onLeft {
             Logger.e { "Failed to get remote commit of repository: $it" }
-        }.mapLeft { }.bind()
+        }.bind()
         if (currentCommit == remoteCommit || gitRepo.commit == currentCommit) { // Repository is up to date or at the specified commit
             Logger.d { "Repository is up to date" }
             return@either repoFolder
@@ -70,7 +70,7 @@ suspend fun cloneRepo(
             "origin/${gitRepo.branch}"
         ).onLeft {
             Logger.e { "Failed to reset repository: $it" }
-        }.mapLeft { }.bind()
+        }.bind()
         Logger.d { "Successfully updated repository" }
         return@either repoFolder
     }
@@ -89,7 +89,7 @@ suspend fun cloneRepo(
         "1"
     ).onLeft {
         Logger.e { "Failed to clone repository: $it" }
-    }.mapLeft { }.bind()
+    }.bind()
     Logger.d { "Successfully cloned repository" }
     if (gitRepo.commit != null) {
         Logger.d { "Checking out commit ${gitRepo.commit}" }
@@ -100,7 +100,7 @@ suspend fun cloneRepo(
             gitRepo.commit
         ).onLeft {
             Logger.e { "Failed to checkout commit: $it" }
-        }.mapLeft { }.bind()
+        }.bind()
         Logger.d { "Successfully checked out commit" }
     }
     repoFolder

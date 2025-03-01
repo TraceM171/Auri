@@ -7,11 +7,13 @@ import arrow.core.raise.either
 import arrow.core.raise.ensure
 import co.touchlab.kermit.Logger
 import com.auri.core.collection.Collector
+import com.auri.core.collection.CollectorStatus
+import com.auri.core.collection.CollectorStatus.*
 import com.auri.core.collection.RawCollectedSample
 import com.auri.core.common.util.MagicNumber
 import com.auri.core.common.util.PeriodicActionConfig
 import com.auri.core.common.util.magicNumber
-import com.auri.core.common.util.perform
+import com.auri.extensions.collection.common.periodicCollection
 import io.ktor.client.*
 import io.ktor.client.plugins.*
 import io.ktor.client.request.*
@@ -21,10 +23,7 @@ import io.ktor.util.cio.*
 import io.ktor.utils.io.*
 import io.ktor.utils.io.streams.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flatMapConcat
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.*
 import kotlinx.datetime.toKotlinLocalDate
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -69,25 +68,24 @@ class MalShareCollector(
     )
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    override fun samples(
+    override fun start(
         collectionParameters: Collector.CollectionParameters
-    ): Flow<RawCollectedSample> = if (definition.periodicity == null) singleSamples(collectionParameters)
-    else definition.periodicity.perform<Unit, Flow<RawCollectedSample>> {
-        singleSamples(collectionParameters)
-    }.flatMapConcat {
-        (it.getOrNull() ?: emptyFlow())
-    }
+    ): Flow<CollectorStatus> = periodicCollection(
+        periodicity = definition.periodicity,
+        collectionParameters = collectionParameters,
+        singleCollection = ::singleSamples
+    )
 
     private fun singleSamples(
         collectionParameters: Collector.CollectionParameters
-    ): Flow<RawCollectedSample> = flow {
-        Logger.i { "Getting samples hashes" }
+    ): Flow<CollectorStatus> = flow {
+        emit(Downloading(what = "Latest samples list"))
         val samplesHashes = api.samplesHashes().getOrElse {
-            Logger.e("Failed to get samples hashes")
+            emit(Failed(what = "Query latest samples", why = it))
             return@flow
-        }.also {
-            Logger.i { "Found ${it.size} samples hashes" }
         }
+        Logger.i { "Found ${samplesHashes.size} sample hashes" }
+        emit(Processing(what = "Already downloaded samples"))
         val alreadyDownloadedSamples = collectionParameters.workingDirectory
             .listFiles()
             .map { it.name }
@@ -95,28 +93,30 @@ class MalShareCollector(
         Logger.i { "Found ${alreadyDownloadedSamples.size} already downloaded samples" }
         val newSamples = samplesHashes.filter { it.sha1 !in alreadyDownloadedSamples }
         Logger.i { "Found ${newSamples.size} new samples" }
-        samplesHashes.forEach { sampleHashes ->
+        val rawSamples = samplesHashes.mapNotNull { sampleHashes ->
+            emit(Processing(what = "Sample ${sampleHashes.sha1}"))
             val destination = File(collectionParameters.workingDirectory, sampleHashes.sha1)
             if (sampleHashes in newSamples) {
-                Logger.i { "Downloading sample ${sampleHashes.sha1}" }
+                emit(Downloading(what = "Sample ${sampleHashes.sha1}"))
                 api.downloadSample(sampleHashes, destination).getOrElse {
-                    Logger.e { "Failed to download sample ${sampleHashes.sha1}" }
-                    return@forEach
+                    Logger.e { "Failed to download sample ${sampleHashes.sha1}: $it" }
+                    return@mapNotNull null
                 }
                 Logger.i { "Successfully downloaded sample ${sampleHashes.sha1}" }
             }
             if (destination.magicNumber() !in definition.samplesMagicNumberFilter) {
                 Logger.i { "Skipping sample ${sampleHashes.sha1} because of its magic number" }
-                return@forEach
+                return@mapNotNull null
             }
-            emit(
-                RawCollectedSample(
-                    submissionDate = LocalDate.now().toKotlinLocalDate(),
-                    name = destination.nameWithoutExtension,
-                    executable = destination
-                )
+            RawCollectedSample(
+                submissionDate = LocalDate.now().toKotlinLocalDate(),
+                name = destination.nameWithoutExtension,
+                executable = destination
             )
-        }
+        }.asFlow()
+            .map { NewSample(it) }
+
+        emitAll(rawSamples)
     }
 
     private class Api(
@@ -135,12 +135,12 @@ class MalShareCollector(
             }
         }
 
-        suspend fun samplesHashes(): Either<Unit, List<SampleLink>> = either {
+        suspend fun samplesHashes(): Either<String, List<SampleLink>> = either {
             val response = client.get {
                 parameter("action", "getlist")
             }
             ensure(response.status.isSuccess()) {
-                Logger.e { "Failed to list hashes from past 24 hours: ${response.status}" }
+                "Failed to query hashes from past 24 hours: ${response.status}"
             }
 
             catch(
@@ -155,8 +155,7 @@ class MalShareCollector(
                     }
                 },
                 {
-                    Logger.e { "Failed to parse hashes from past 24 hours" }
-                    raise(Unit)
+                    raise("Failed to parse hashes: $it")
                 }
             )
         }
@@ -164,14 +163,14 @@ class MalShareCollector(
         suspend fun downloadSample(
             sampleLink: SampleLink,
             destination: File
-        ): Either<Unit, Unit> = either {
+        ): Either<String, Unit> = either {
             destination.parentFile.mkdirs()
             val response = client.get {
                 parameter("action", "getfile")
                 parameter("hash", sampleLink.sha1)
             }
             ensure(response.status.isSuccess()) {
-                Logger.e { "Failed to download sample ${sampleLink.sha1}: ${response.status}" }
+                "Failed to download sample: ${response.status}"
             }
             val body = response.bodyAsChannel()
             destination.outputStream().asByteWriteChannel().use { body.copyTo(this) }

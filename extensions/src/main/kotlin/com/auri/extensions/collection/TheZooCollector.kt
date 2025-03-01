@@ -4,9 +4,12 @@ import arrow.core.getOrElse
 import arrow.core.mapValuesNotNull
 import co.touchlab.kermit.Logger
 import com.auri.core.collection.Collector
+import com.auri.core.collection.CollectorStatus
+import com.auri.core.collection.CollectorStatus.*
 import com.auri.core.collection.RawCollectedSample
 import com.auri.core.common.MissingDependency
 import com.auri.core.common.util.*
+import com.auri.extensions.collection.common.periodicCollection
 import com.auri.extensions.common.sqliteConnection
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
@@ -56,28 +59,33 @@ class TheZooCollector(
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    override fun samples(
+    override fun start(
         collectionParameters: Collector.CollectionParameters
-    ): Flow<RawCollectedSample> = if (definition.periodicity == null) singleSamples(collectionParameters)
-    else definition.periodicity.perform<Unit, Flow<RawCollectedSample>> {
-        singleSamples(collectionParameters)
-    }.flatMapConcat {
-        (it.getOrNull() ?: emptyFlow())
-    }
+    ): Flow<CollectorStatus> = periodicCollection(
+        periodicity = definition.periodicity,
+        collectionParameters = collectionParameters,
+        singleCollection = ::singleSamples
+    )
 
     private fun singleSamples(
         collectionParameters: Collector.CollectionParameters
-    ): Flow<RawCollectedSample> = flow {
-        val theZooFolder = cloneRepo(
-            collectionParameters = collectionParameters,
-            gitRepo = definition.gitRepo,
-        ).getOrElse { return@flow }
+    ): Flow<CollectorStatus> = flow {
+        emit(Downloading(what = "Repository"))
+        val repoFolder = cloneRepo(
+            workingDirectory = collectionParameters.workingDirectory,
+            gitRepo = definition.gitRepo
+        ).getOrElse {
+            emit(Failed(what = "Clone repository", why = it))
+            return@flow
+        }
 
-        val theZooDB = File(theZooFolder, "conf/maldb.db").let(::sqliteConnection)
+        emit(Processing(what = "Query samples"))
+        val theZooDB = File(repoFolder, "conf/maldb.db").let(::sqliteConnection)
         val filteredSamples = theZooDB.getMalwareSamples()
 
+        emit(Processing(what = "Extract samples"))
         val extractedSamples = filteredSamples.associateWith { sample ->
-            val sampleDir = File(theZooFolder, sample.location)
+            val sampleDir = File(repoFolder, sample.location)
             if (!sampleDir.exists()) {
                 Logger.e { "Sample directory ${sampleDir.name} does not exist" }
                 return@associateWith null
@@ -93,9 +101,10 @@ class TheZooCollector(
                     executable = it
                 )
             }
-        }
+        }.asFlow()
+            .map { NewSample(it) }
 
-        emitAll(rawSamples.asFlow())
+        emitAll(rawSamples)
     }
 
     private fun Database.getMalwareSamples(): List<MalwareEntity> {
@@ -140,8 +149,7 @@ class TheZooCollector(
     }
 }
 
-/*
-* CREATE TABLE "Malwares" (
+/** CREATE TABLE "Malwares" (
 	`ID`	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 	`LOCATION`	TEXT NOT NULL,
 	`TYPE`	TEXT NOT NULL,
@@ -155,8 +163,9 @@ class TheZooCollector(
 	`VIP`	BOOLEAN NOT NULL,
 	`COMMENTS`	TEXT,
 	`TAGS`	TEXT
-)
-*/
+)*/
+
+
 object MalwareTable : IntIdTable(name = "Malwares") {
     val location = varchar("location", 255)
     val type = varchar("type", 255)

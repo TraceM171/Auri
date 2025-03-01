@@ -1,0 +1,25 @@
+package com.auri.collection
+
+import arrow.core.Nel
+import com.auri.core.collection.Collector
+import com.auri.core.collection.CollectorStatus
+import com.auri.core.common.MissingDependency
+
+sealed interface CollectionProcessStatus {
+    data object NotStarted : CollectionProcessStatus
+    data object Initializing : CollectionProcessStatus
+    data class MissingDependencies(val missingDependencies: Map<Collector, Nel<MissingDependency>>) :
+        CollectionProcessStatus
+
+    data class Collecting(
+        val collectorsStatus: Map<Collector, CollectorStatus?>,
+        val samplesCollectedByCollector: Map<Collector, Int>,
+        val totalSamplesCollected: Int
+    ) : CollectionProcessStatus
+
+    data class Finished(
+        val collectorsStatus: Map<Collector, CollectorStatus?>,
+        val samplesCollectedByCollector: Map<Collector, Int>,
+        val totalSamplesCollected: Int
+    ) : CollectionProcessStatus
+}

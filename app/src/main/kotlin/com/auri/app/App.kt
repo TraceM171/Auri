@@ -7,11 +7,13 @@ import com.auri.conf.configByPrefix
 import com.auri.conf.model.CollectionPhaseConfig
 import com.auri.conf.model.MainConf
 import com.auri.core.common.util.chainIfNotNull
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import java.io.File
 
 suspend fun collectSamples(
     configFile: File,
-) {
+) = coroutineScope {
     val workingDirectory = File("/home/auri/TFM/auri/scratch")
     val auriDB = File(workingDirectory, "auri.db")
 
@@ -27,5 +29,10 @@ suspend fun collectSamples(
         auriDB = auriDB.let(::sqliteConnection),
         collectors = phaseConfig.collectors,
     )
-    collectionService.startCollection()
+    launch {
+        collectionService.collectionStatus.collect {
+            println(it)
+        }
+    }
+    launch { collectionService.run() }
 }

@@ -29,13 +29,14 @@ interface Collector : HasDependencies {
     val version: String
 
     /**
-     * The source of the samples.
-     *
+     * Starts the collection process.
+     * 
      * @param collectionParameters The parameters for the collection.
+     * @return A flow of [CollectorStatus] objects that represent changes in the collection status.
      */
-    fun samples(
+    fun start(
         collectionParameters: CollectionParameters
-    ): Flow<RawCollectedSample>
+    ): Flow<CollectorStatus>
 
     override suspend fun checkDependencies(): List<MissingDependency> = emptyList()
 

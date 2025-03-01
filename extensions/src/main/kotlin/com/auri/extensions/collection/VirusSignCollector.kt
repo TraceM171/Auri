@@ -6,8 +6,11 @@ import arrow.core.raise.either
 import arrow.core.raise.ensure
 import co.touchlab.kermit.Logger
 import com.auri.core.collection.Collector
+import com.auri.core.collection.CollectorStatus
+import com.auri.core.collection.CollectorStatus.*
 import com.auri.core.collection.RawCollectedSample
 import com.auri.core.common.util.*
+import com.auri.extensions.collection.common.periodicCollection
 import io.ktor.client.*
 import io.ktor.client.plugins.auth.*
 import io.ktor.client.plugins.auth.providers.*
@@ -21,10 +24,7 @@ import it.skrape.core.htmlDocument
 import it.skrape.selects.eachHref
 import it.skrape.selects.html5.a
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flatMapConcat
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.*
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.toKotlinLocalDate
@@ -67,21 +67,20 @@ class VirusSignCollector(
     )
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    override fun samples(
+    override fun start(
         collectionParameters: Collector.CollectionParameters
-    ): Flow<RawCollectedSample> = if (definition.periodicity == null) singleSamples(collectionParameters)
-    else definition.periodicity.perform<Unit, Flow<RawCollectedSample>> {
-        singleSamples(collectionParameters)
-    }.flatMapConcat {
-        (it.getOrNull() ?: emptyFlow())
-    }
+    ): Flow<CollectorStatus> = periodicCollection(
+        periodicity = definition.periodicity,
+        collectionParameters = collectionParameters,
+        singleCollection = ::singleSamples
+    )
 
     private fun singleSamples(
         collectionParameters: Collector.CollectionParameters
-    ): Flow<RawCollectedSample> = flow {
-        Logger.i { "Getting samples links" }
+    ): Flow<CollectorStatus> = flow {
+        emit(Downloading(what = "Latest samples list"))
         val samplesLinks = api.samplesLinks().getOrElse {
-            Logger.e("Failed to get samples links")
+            emit(Failed(what = "Query latest samples", why = it))
             return@flow
         }.also {
             Logger.i { "Found ${it.size} samples links" }
@@ -93,6 +92,7 @@ class VirusSignCollector(
                 Logger.i { "Found ${it.size} samples links" }
             }
         }
+        emit(Processing(what = "Already downloaded samples"))
         val alreadyDownloadedSamples = collectionParameters.workingDirectory
             .listFiles { _, name -> name.endsWith(".zip") }
             .map { it.name }
@@ -100,27 +100,29 @@ class VirusSignCollector(
         Logger.i { "Found ${alreadyDownloadedSamples.size} already downloaded samples" }
         val newSamples = samplesLinks.filter { File(it.url.path).name !in alreadyDownloadedSamples }
         Logger.i { "Found ${newSamples.size} new samples" }
-        samplesLinks.forEach { sampleLink ->
+        val rawSamples = samplesLinks.mapNotNull { sampleLink ->
             val destination = File(collectionParameters.workingDirectory, File(sampleLink.url.path).name)
+            emit(Processing(what = "Sample ${destination.nameWithoutExtension}"))
             if (sampleLink in newSamples) {
-                Logger.i { "Downloading sample from ${sampleLink.url}" }
+                emit(Downloading(what = "Sample ${destination.nameWithoutExtension}"))
                 api.downloadSample(sampleLink, destination).getOrElse {
-                    Logger.e { "Failed to download sample from ${sampleLink.url}" }
-                    return@forEach
+                    Logger.e { "Failed to download sample from ${sampleLink.url}: $it" }
+                    return@mapNotNull null
                 }
                 Logger.i { "Successfully downloaded sample from ${sampleLink.url}" }
             }
-            val extractedSamples = extractSamples(destination)
-            extractedSamples.forEach { sample ->
-                emit(
-                    RawCollectedSample(
-                        submissionDate = sampleLink.date,
-                        name = sample.nameWithoutExtension,
-                        executable = sample
-                    )
+            extractSamples(destination).map { sample ->
+                RawCollectedSample(
+                    submissionDate = sampleLink.date,
+                    name = sample.nameWithoutExtension,
+                    executable = sample
                 )
             }
-        }
+        }.flatten()
+            .asFlow()
+            .map { NewSample(it) }
+
+        emitAll(rawSamples)
     }
 
     private fun extractSamples(
@@ -160,7 +162,7 @@ class VirusSignCollector(
             }
         }
 
-        suspend fun samplesLinks(): Either<Unit, List<SampleLink>> = either {
+        suspend fun samplesLinks(): Either<String, List<SampleLink>> = either {
             val baseUrl = directoryListingUrl.toString().removeSuffix(directoryListingUrl.path)
             val dateRegex = Regex("""\d{8}|\d{6}""")
             val rawLinksList = getLinksInPath(null, 0).bind()
@@ -189,11 +191,11 @@ class VirusSignCollector(
         suspend fun downloadSample(
             sampleLink: SampleLink,
             destination: File
-        ): Either<Unit, Unit> = either {
+        ): Either<String, Unit> = either {
             destination.parentFile.mkdirs()
             val response = client.get(sampleLink.url.toString())
             ensure(response.status.isSuccess()) {
-                Logger.e { "Failed to download sample from ${sampleLink.url}" }
+                "Failed to download sample: ${response.status}"
             }
             val body = response.bodyAsChannel()
             destination.outputStream().asByteWriteChannel().use { body.copyTo(this) }
@@ -202,7 +204,7 @@ class VirusSignCollector(
         private suspend fun getLinksInPath(
             path: String?,
             currentDepth: Int
-        ): Either<Unit, List<String>> = either {
+        ): Either<String, List<String>> = either {
             val response = client.get {
                 url {
                     takeFrom(directoryListingUrl)
@@ -210,7 +212,7 @@ class VirusSignCollector(
                 }
             }
             ensure(response.status.isSuccess()) {
-                Logger.e { "Failed to fetch directory listing from $directoryListingUrl" }
+                "Failed to fetch directory listing: ${response.status}"
             }
 
             val body = response.bodyAsText()
