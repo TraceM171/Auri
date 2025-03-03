@@ -3,6 +3,7 @@ package com.auri.collection
 import arrow.core.Nel
 import com.auri.core.collection.Collector
 import com.auri.core.collection.CollectorStatus
+import com.auri.core.collection.InfoProvider
 import com.auri.core.common.MissingDependency
 
 sealed interface CollectionProcessStatus {
@@ -15,12 +16,16 @@ sealed interface CollectionProcessStatus {
     data class Collecting(
         val collectorsStatus: Map<Collector, CollectorStatus?>,
         val samplesCollectedByCollector: Map<Collector, Int>,
-        val totalSamplesCollected: Int
+        val totalSamplesCollected: Int,
+        val samplesWithInfoByProvider: Map<InfoProvider, Int>,
+        val totalSamplesWithInfo: Int
     ) : CollectionProcessStatus
 
     data class Finished(
         val collectorsStatus: Map<Collector, CollectorStatus?>,
         val samplesCollectedByCollector: Map<Collector, Int>,
-        val totalSamplesCollected: Int
+        val totalSamplesCollected: Int,
+        val samplesWithInfoByProvider: Map<InfoProvider, Int>,
+        val totalSamplesWithInfo: Int
     ) : CollectionProcessStatus
 }

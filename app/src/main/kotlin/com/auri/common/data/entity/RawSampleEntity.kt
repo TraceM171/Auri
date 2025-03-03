@@ -6,7 +6,7 @@ import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.kotlin.datetime.date
 
-object RawSampleTable : IntIdTable(name = "raw_sample") {
+object RawSampleTable : IntIdTable() {
     val md5 = text("md5")
     val sha1 = text("sha1")
     val sha256 = text("sha256")

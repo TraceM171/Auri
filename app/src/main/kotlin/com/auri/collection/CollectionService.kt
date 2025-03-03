@@ -6,44 +6,72 @@ import arrow.fx.coroutines.parMapNotNull
 import co.touchlab.kermit.Logger
 import com.auri.common.data.entity.RawSampleEntity
 import com.auri.common.data.entity.RawSampleTable
+import com.auri.common.data.entity.SampleInfoEntity
 import com.auri.core.collection.Collector
 import com.auri.core.collection.CollectorStatus
+import com.auri.core.collection.InfoProvider
 import com.auri.core.collection.RawCollectedSample
 import com.auri.core.common.util.HashAlgorithms
 import com.auri.core.common.util.hashes
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.flow.*
 import kotlinx.datetime.toKotlinLocalDate
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 
+@OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class CollectionService(
     private val cacheDir: File,
     private val samplesDir: File,
     private val auriDB: Database,
-    private val collectors: List<Collector>
+    private val collectors: List<Collector>,
+    private val infoProviders: List<InfoProvider>
 ) {
     private val _collectionStatus: MutableStateFlow<CollectionProcessStatus> =
         MutableStateFlow(CollectionProcessStatus.NotStarted)
     val collectionStatus = _collectionStatus.asStateFlow()
 
-    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
     suspend fun run() {
+        coroutineScope {
+            val collectionFlow = launchCollectionStep(capacity = Channel.UNLIMITED).consumeAsFlow()
+            launchInfoProviderStep(collectionFlow)
+        }
+        _collectionStatus.update {
+            val collectingOrNull = it as? CollectionProcessStatus.Collecting
+            CollectionProcessStatus.Finished(
+                collectorsStatus = collectingOrNull?.collectorsStatus ?: emptyMap(),
+                samplesCollectedByCollector = collectingOrNull?.samplesCollectedByCollector
+                    ?: emptyMap(),
+                totalSamplesCollected = collectingOrNull?.totalSamplesCollected ?: 0,
+                samplesWithInfoByProvider = collectingOrNull?.samplesWithInfoByProvider ?: emptyMap(),
+                totalSamplesWithInfo = collectingOrNull?.totalSamplesWithInfo ?: 0
+            )
+        }
+    }
+
+    private fun CoroutineScope.launchCollectionStep(
+        capacity: Int = Channel.RENDEZVOUS
+    ) = produce(
+        capacity = capacity,
+    ) {
         _collectionStatus.update { CollectionProcessStatus.Initializing }
         val missingDependencies = collectors.parMapNotNull { collector ->
             collector.checkDependencies().toNonEmptyListOrNull()?.let { collector to it }
         }.associate { it }
         if (missingDependencies.isNotEmpty()) {
             _collectionStatus.update { CollectionProcessStatus.MissingDependencies(missingDependencies) }
-            return
+            return@produce
         }
         _collectionStatus.update {
             CollectionProcessStatus.Collecting(
                 collectorsStatus = collectors.associateWith { null },
                 samplesCollectedByCollector = collectors.associateWith { 0 },
-                totalSamplesCollected = 0
+                totalSamplesCollected = 0,
+                samplesWithInfoByProvider = infoProviders.associateWith { 0 },
+                totalSamplesWithInfo = 0
             )
         }
 
@@ -70,23 +98,14 @@ class CollectionService(
                 )
                 SampleWithSourceAndHashes(newSampleStatus.sample, collector, hashes)
             }.filterNotNull()
-            .onCompletion {
-                _collectionStatus.update {
-                    CollectionProcessStatus.Finished(
-                        collectorsStatus = (it as? CollectionProcessStatus.Collecting)?.collectorsStatus ?: emptyMap(),
-                        samplesCollectedByCollector = (it as? CollectionProcessStatus.Collecting)?.samplesCollectedByCollector
-                            ?: emptyMap(),
-                        totalSamplesCollected = (it as? CollectionProcessStatus.Collecting)?.totalSamplesCollected ?: 0
-                    )
-                }
-            }.collect { (sample, source, hashes) ->
+            .collect { (sample, source, hashes) ->
                 val sampleFile = File(samplesDir, hashes[HashAlgorithms.SHA1]!!)
-                val addedToDB = transaction(auriDB) {
+                val entityAdded = transaction(auriDB) {
                     RawSampleEntity.find {
                         RawSampleTable.sha256 eq hashes[HashAlgorithms.SHA256]!!
                     }.firstOrNull()?.let {
                         Logger.i { "Sample ${sample.name} already exists in the database, skipping" }
-                        return@transaction false
+                        return@transaction null
                     }
                     val savedEntity = RawSampleEntity.new {
                         this.md5 = hashes[HashAlgorithms.MD5]!!
@@ -100,9 +119,9 @@ class CollectionService(
                         this.submissionDate = sample.submissionDate
                     }
                     Logger.i { "Sample ${sample.name} saved to the database with ID ${savedEntity.id}" }
-                    true
+                    savedEntity
                 }
-                if (!addedToDB) return@collect
+                if (entityAdded == null) return@collect
                 sample.executable.copyTo(sampleFile)
                 _collectionStatus.update { currentStatus ->
                     (currentStatus as? CollectionProcessStatus.Collecting)
@@ -115,7 +134,55 @@ class CollectionService(
                             )
                         } ?: currentStatus
                 }
+                send(entityAdded)
             }
+    }
+
+    private fun CoroutineScope.launchInfoProviderStep(
+        collectionFlow: Flow<RawSampleEntity>
+    ) = launch {
+        collectionFlow.collect { collectedSample ->
+            infoProviders.asFlow().withIndex().parMap { (priority, infoProvider) ->
+                val sampleInfo = infoProvider.sampleInfoByHash {
+                    when (it) {
+                        HashAlgorithms.MD5 -> collectedSample.md5
+                        HashAlgorithms.SHA1 -> collectedSample.sha1
+                        HashAlgorithms.SHA256 -> collectedSample.sha256
+                    }
+                } ?: return@parMap null
+                object {
+                    val priority = priority
+                    val infoProvider = infoProvider
+                    val sampleInfo = sampleInfo
+                }
+            }.filterNotNull().collect { data ->
+                transaction(auriDB) {
+                    SampleInfoEntity.new(
+                        SampleInfoEntity.id(
+                            sampleId = collectedSample.id.value,
+                            sourceName = data.infoProvider.name
+                        )
+                    ) {
+                        this.hashMatched = data.sampleInfo.hashMatched
+                        this.malwareFamily = data.sampleInfo.malwareFamily
+                        this.extraInfo = data.sampleInfo.extraInfo
+                        this.fetchDate = java.time.LocalDate.now().toKotlinLocalDate()
+                        this.priority = data.priority
+                    }
+                }
+                _collectionStatus.update { currentStatus ->
+                    (currentStatus as? CollectionProcessStatus.Collecting)
+                        ?.let {
+                            it.copy(
+                                samplesWithInfoByProvider = it.samplesWithInfoByProvider.toMutableMap().apply {
+                                    this[data.infoProvider] = (this[data.infoProvider] ?: 0) + 1
+                                },
+                                totalSamplesWithInfo = it.totalSamplesWithInfo + 1
+                            )
+                        } ?: currentStatus
+                }
+            }
+        }
     }
 
     private fun updateStatusForCollector(

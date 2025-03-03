@@ -34,6 +34,7 @@ exposed-core = { module = "org.jetbrains.exposed:exposed-core", version.ref = "e
 exposed-dao = { module = "org.jetbrains.exposed:exposed-dao", version.ref = "exposed" }
 exposed-jdbc = { module = "org.jetbrains.exposed:exposed-jdbc", version.ref = "exposed" }
 exposed-kotlin-datetime = { module = "org.jetbrains.exposed:exposed-kotlin-datetime", version.ref = "exposed" }
+exposed-json = { module = "org.jetbrains.exposed:exposed-json", version.ref = "exposed" }
 xerial-sqlite = { module = "org.xerial:sqlite-jdbc", version.ref = "xeial-sqlite" }
 lingala-zip4j = { module = "net.lingala.zip4j:zip4j", version.ref = "lingala-zip4j" }
 hoplite-core = { module = "com.sksamuel.hoplite:hoplite-core", version.ref = "hoplite" }
@@ -50,7 +51,7 @@ skrapeit = { module = "it.skrape:skrapeit", version.ref = "skrapeit" }
 [bundles]
 kotest = ["kotest-junit5", "kotest-assertions-core", "kotest-property", "kotest-arrow"]
 arrow = ["arrow-core", "arrow-coroutines", "arrow-resilience"]
-exposed = ["exposed-core", "exposed-jdbc", "xerial-sqlite", "exposed-dao", "exposed-kotlin-datetime"]
+exposed = ["exposed-core", "exposed-jdbc", "xerial-sqlite", "exposed-dao", "exposed-kotlin-datetime", "exposed-json"]
 hoplite = ["hoplite-core", "hoplite-yaml", "hoplite-arrow"]
 ktor = ["ktor-client-core", "ktor-client-okhttp", "ktor-client-auth"]
 

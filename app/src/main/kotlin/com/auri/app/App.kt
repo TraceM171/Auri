@@ -5,17 +5,20 @@ import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import com.auri.collection.CollectionProcessStatus
 import com.auri.collection.CollectionService
+import com.auri.common.data.entity.RawSampleTable
+import com.auri.common.data.entity.SampleInfoTable
 import com.auri.common.data.sqliteConnection
 import com.auri.common.withExtensions
 import com.auri.conf.configByPrefix
 import com.auri.conf.model.CollectionPhaseConfig
 import com.auri.conf.model.MainConf
 import com.auri.core.common.util.chainIfNotNull
-import com.auri.core.common.util.getResource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.jetbrains.exposed.sql.SchemaUtils
+import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 
 fun CoroutineScope.launchSampleCollection(
@@ -26,7 +29,7 @@ fun CoroutineScope.launchSampleCollection(
     val cacheDir = File(baseDirectory, "cache/collection")
     val samplesDir = File(baseDirectory, "samples")
     val extensionsDir = File(baseDirectory, "extensions")
-    val auriDB = File(baseDirectory, "auri.db")
+    val auriDB = File(baseDirectory, "auri.db").let(::sqliteConnection)
 
     Logger.setMinSeverity(Severity.Warn) // TODO
 
@@ -38,12 +41,8 @@ fun CoroutineScope.launchSampleCollection(
     cacheDir.mkdirs()
     samplesDir.mkdirs()
     extensionsDir.mkdirs()
-    if (!auriDB.exists()) {
-        auriDB.outputStream().use { output ->
-            getResource("auri.db")?.use { input ->
-                input.copyTo(output)
-            } ?: error("Could not find auri.db in resources")
-        }
+    transaction(auriDB) {
+        SchemaUtils.create(RawSampleTable, SampleInfoTable)
     }
 
     runbook.configByPrefix<MainConf>().getOrElse {
@@ -69,8 +68,9 @@ fun CoroutineScope.launchSampleCollection(
     val collectionService = CollectionService(
         cacheDir = cacheDir,
         samplesDir = samplesDir,
-        auriDB = auriDB.let(::sqliteConnection),
+        auriDB = auriDB,
         collectors = phaseConfig.collectors,
+        infoProviders = phaseConfig.infoProviders
     )
     launch { collectionService.run() }
 
