@@ -1,4 +1,4 @@
-package com.auri.collection
+package com.auri.app.collection
 
 import arrow.core.Nel
 import com.auri.core.collection.Collector

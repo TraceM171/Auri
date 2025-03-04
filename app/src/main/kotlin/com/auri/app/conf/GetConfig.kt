@@ -1,4 +1,4 @@
-package com.auri.conf
+package com.auri.app.conf
 
 import arrow.core.Either
 import arrow.core.raise.catch
@@ -9,7 +9,7 @@ import com.sksamuel.hoplite.addFileSource
 import java.io.File
 
 @OptIn(ExperimentalHoplite::class)
-inline fun <reified T : Any> File.configByPrefix(
+internal inline fun <reified T : Any> File.configByPrefix(
     classLoader: ClassLoader = T::class.java.classLoader,
     prefix: String? = null
 ): Either<Throwable, T> = either {

@@ -1,4 +1,4 @@
-package com.auri.conf
+package com.auri.app.conf
 
 import com.sksamuel.hoplite.*
 import com.sksamuel.hoplite.decoder.DataClassDecoder
@@ -9,7 +9,7 @@ import kotlin.reflect.KClass
 import kotlin.reflect.KType
 import kotlin.reflect.full.createType
 
-class SubclassDecoder(
+internal class SubclassDecoder(
     private val classLoader: ClassLoader
 ) : NullHandlingDecoder<Any> {
 

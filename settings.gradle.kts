@@ -20,3 +20,4 @@ rootProject.name = "auri"
 include("core")
 include("app")
 include("extensions")
+include("app-cli")

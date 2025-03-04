@@ -1,10 +1,10 @@
-package com.auri.common
+package com.auri.app.common
 
 import co.touchlab.kermit.Logger
 import java.io.File
 import java.net.URLClassLoader
 
-fun ClassLoader.withExtensions(
+internal fun ClassLoader.withExtensions(
     extensionsFolder: File,
 ): URLClassLoader {
     val sourceFiles = when {

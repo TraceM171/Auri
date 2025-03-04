@@ -1,4 +1,4 @@
-package com.auri.common.data.entity
+package com.auri.app.common.data.entity
 
 import org.jetbrains.exposed.dao.IntEntity
 import org.jetbrains.exposed.dao.IntEntityClass
@@ -6,7 +6,7 @@ import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.kotlin.datetime.date
 
-object RawSampleTable : IntIdTable() {
+internal object RawSampleTable : IntIdTable() {
     val md5 = text("md5")
     val sha1 = text("sha1")
     val sha256 = text("sha256")
@@ -18,7 +18,7 @@ object RawSampleTable : IntIdTable() {
     val sourceVersion = text("source_version").nullable()
 }
 
-class RawSampleEntity(id: EntityID<Int>) : IntEntity(id) {
+internal class RawSampleEntity(id: EntityID<Int>) : IntEntity(id) {
     companion object : IntEntityClass<RawSampleEntity>(RawSampleTable)
 
     var md5 by RawSampleTable.md5

@@ -1,4 +1,4 @@
-package com.auri.common
+package com.auri.app.common
 
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
@@ -8,8 +8,9 @@ import org.slf4j.event.Level
 import org.slf4j.helpers.AbstractLogger
 import org.slf4j.helpers.BasicMarkerFactory
 import org.slf4j.helpers.NOPMDCAdapter
+import org.slf4j.spi.SLF4JServiceProvider
 
-class Slf4jKermitLogger : AbstractLogger() {
+internal class Slf4jKermitLogger : AbstractLogger() {
     private val logger = Logger
     override fun getName(): String = "slf4j-over-kermit"
 
@@ -58,7 +59,7 @@ class Slf4jKermitLogger : AbstractLogger() {
     }
 }
 
-class KermitServiceProvider : org.slf4j.spi.SLF4JServiceProvider {
+internal class KermitServiceProvider : SLF4JServiceProvider {
     private val markerFactory = BasicMarkerFactory()
     private val mdcAdapter = NOPMDCAdapter()
     override fun getLoggerFactory() = ILoggerFactory {

@@ -1,6 +1,5 @@
-package com.auri
+package com.auri.app
 
-import com.auri.app.launchSampleCollection
 import kotlinx.coroutines.runBlocking
 import java.io.File
 

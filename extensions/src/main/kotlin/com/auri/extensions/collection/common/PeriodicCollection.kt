@@ -6,6 +6,7 @@ import com.auri.core.collection.CollectorStatus.*
 import com.auri.core.common.util.PeriodicActionConfig
 import com.auri.core.common.util.perform
 import kotlinx.coroutines.flow.*
+import kotlinx.datetime.Clock
 
 fun periodicCollection(
     periodicity: PeriodicActionConfig?,
@@ -30,15 +31,23 @@ fun periodicCollection(
         val lastStatus = safeCollectorFlow
             .map {
                 when (it) {
-                    is Failed -> Retrying(what = it.what, why = it.why)
-                    is Done -> DoneUntilNextPeriod
+                    is Failed -> Retrying(
+                        what = it.what,
+                        why = it.why,
+                        nextTryStart = Clock.System.now() + periodicity.retryEvery
+                    )
+
+                    is Done -> DoneUntilNextPeriod(
+                        nextPeriodStart = Clock.System.now() + periodicity.performEvery
+                    )
+
                     else -> it
                 }
             }.transformWhile {
                 emit(it)
                 when (it) {
                     Done,
-                    DoneUntilNextPeriod,
+                    is DoneUntilNextPeriod,
                     is Retrying,
                     is Failed -> false
 
@@ -51,7 +60,7 @@ fun periodicCollection(
             }.lastOrNull()
         when (lastStatus) {
             Done,
-            DoneUntilNextPeriod,
+            is DoneUntilNextPeriod,
             is Downloading,
             is NewSample,
             is Processing,

@@ -1,4 +1,5 @@
 plugins {
+    application
     idea
     alias(libs.plugins.kotlin.jvm)
 }
@@ -6,13 +7,14 @@ plugins {
 group = "com.auri"
 version = "0.0.1"
 
+application {
+    applicationName = "auri"
+    mainClass = "com.auri.cli.ConsoleAppKt"
+}
 dependencies {
-    api(project(":core"))
-    implementation(project(":extensions"))
+    implementation(project(":app"))
 
-    implementation(libs.kotlin.coroutines)
-    implementation(libs.bundles.exposed)
-    implementation(libs.bundles.hoplite)
+    implementation(libs.ajalt.clikt)
 
     testImplementation(kotlin("test"))
 }

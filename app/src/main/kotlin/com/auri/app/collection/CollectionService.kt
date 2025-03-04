@@ -1,12 +1,12 @@
-package com.auri.collection
+package com.auri.app.collection
 
 import arrow.core.toNonEmptyListOrNull
 import arrow.fx.coroutines.parMap
 import arrow.fx.coroutines.parMapNotNull
 import co.touchlab.kermit.Logger
-import com.auri.common.data.entity.RawSampleEntity
-import com.auri.common.data.entity.RawSampleTable
-import com.auri.common.data.entity.SampleInfoEntity
+import com.auri.app.common.data.entity.RawSampleEntity
+import com.auri.app.common.data.entity.RawSampleTable
+import com.auri.app.common.data.entity.SampleInfoEntity
 import com.auri.core.collection.Collector
 import com.auri.core.collection.CollectorStatus
 import com.auri.core.collection.InfoProvider
@@ -21,9 +21,10 @@ import kotlinx.datetime.toKotlinLocalDate
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.io.File
+import java.time.LocalDate
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
-class CollectionService(
+internal class CollectionService(
     private val cacheDir: File,
     private val samplesDir: File,
     private val auriDB: Database,
@@ -117,7 +118,7 @@ class CollectionService(
                         this.sourceName = source.name
                         this.sourceVersion = source.version
                         this.path = sampleFile.relativeTo(samplesDir).path
-                        this.collectionDate = java.time.LocalDate.now().toKotlinLocalDate()
+                        this.collectionDate = LocalDate.now().toKotlinLocalDate()
                         this.submissionDate = sample.submissionDate
                     }
                     Logger.i { "Sample ${sample.name} saved to the database with ID ${savedEntity.id}" }
@@ -169,7 +170,7 @@ class CollectionService(
                             this.hashMatched = data.sampleInfo.hashMatched
                             this.malwareFamily = data.sampleInfo.malwareFamily
                             this.extraInfo = data.sampleInfo.extraInfo
-                            this.fetchDate = java.time.LocalDate.now().toKotlinLocalDate()
+                            this.fetchDate = LocalDate.now().toKotlinLocalDate()
                             this.priority = data.priority
                         }
                     }

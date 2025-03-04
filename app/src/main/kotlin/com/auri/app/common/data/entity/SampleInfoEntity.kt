@@ -1,4 +1,4 @@
-package com.auri.common.data.entity
+package com.auri.app.common.data.entity
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -28,7 +28,7 @@ import org.jetbrains.exposed.sql.kotlin.datetime.date
 //        primary key (sample_id, source_name)
 //);
 
-object SampleInfoTable : CompositeIdTable() {
+internal object SampleInfoTable : CompositeIdTable() {
     val sampleId = reference(
         name = "sample_id",
         foreign = RawSampleTable,
@@ -50,7 +50,7 @@ object SampleInfoTable : CompositeIdTable() {
         get() = PrimaryKey(sampleId, sourceName)
 }
 
-class SampleInfoEntity(id: EntityID<CompositeID>) : CompositeEntity(id) {
+internal class SampleInfoEntity(id: EntityID<CompositeID>) : CompositeEntity(id) {
     companion object : CompositeEntityClass<SampleInfoEntity>(SampleInfoTable) {
         fun id(sampleId: Int, sourceName: String) = CompositeID {
             it[SampleInfoTable.sampleId] = sampleId

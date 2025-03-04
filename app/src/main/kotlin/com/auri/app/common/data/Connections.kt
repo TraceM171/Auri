@@ -1,9 +1,9 @@
-package com.auri.common.data
+package com.auri.app.common.data
 
 import org.jetbrains.exposed.sql.Database
 import java.io.File
 
-fun sqliteConnection(
+internal fun sqliteConnection(
     file: File
 ) = Database.connect(
     url = "jdbc:sqlite:${file.absolutePath}",
