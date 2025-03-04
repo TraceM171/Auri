@@ -21,6 +21,7 @@ import kotlinx.datetime.toKotlinLocalDate
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class CollectionService(
@@ -98,6 +99,7 @@ class CollectionService(
                 )
                 SampleWithSourceAndHashes(newSampleStatus.sample, collector, hashes)
             }.filterNotNull()
+            .onEach { delay(10.milliseconds) } // Chill the db access
             .collect { (sample, source, hashes) ->
                 val sampleFile = File(samplesDir, hashes[HashAlgorithms.SHA1]!!)
                 val entityAdded = transaction(auriDB) {
@@ -155,33 +157,35 @@ class CollectionService(
                     val infoProvider = infoProvider
                     val sampleInfo = sampleInfo
                 }
-            }.filterNotNull().collect { data ->
-                transaction(auriDB) {
-                    SampleInfoEntity.new(
-                        SampleInfoEntity.id(
-                            sampleId = collectedSample.id.value,
-                            sourceName = data.infoProvider.name
-                        )
-                    ) {
-                        this.hashMatched = data.sampleInfo.hashMatched
-                        this.malwareFamily = data.sampleInfo.malwareFamily
-                        this.extraInfo = data.sampleInfo.extraInfo
-                        this.fetchDate = java.time.LocalDate.now().toKotlinLocalDate()
-                        this.priority = data.priority
+            }.filterNotNull()
+                .onEach { delay(10.milliseconds) } // Chill the db access
+                .collect { data ->
+                    transaction(auriDB) {
+                        SampleInfoEntity.new(
+                            SampleInfoEntity.id(
+                                sampleId = collectedSample.id.value,
+                                sourceName = data.infoProvider.name
+                            )
+                        ) {
+                            this.hashMatched = data.sampleInfo.hashMatched
+                            this.malwareFamily = data.sampleInfo.malwareFamily
+                            this.extraInfo = data.sampleInfo.extraInfo
+                            this.fetchDate = java.time.LocalDate.now().toKotlinLocalDate()
+                            this.priority = data.priority
+                        }
+                    }
+                    _collectionStatus.update { currentStatus ->
+                        (currentStatus as? CollectionProcessStatus.Collecting)
+                            ?.let {
+                                it.copy(
+                                    samplesWithInfoByProvider = it.samplesWithInfoByProvider.toMutableMap().apply {
+                                        this[data.infoProvider] = (this[data.infoProvider] ?: 0) + 1
+                                    },
+                                    totalSamplesWithInfo = it.totalSamplesWithInfo + 1
+                                )
+                            } ?: currentStatus
                     }
                 }
-                _collectionStatus.update { currentStatus ->
-                    (currentStatus as? CollectionProcessStatus.Collecting)
-                        ?.let {
-                            it.copy(
-                                samplesWithInfoByProvider = it.samplesWithInfoByProvider.toMutableMap().apply {
-                                    this[data.infoProvider] = (this[data.infoProvider] ?: 0) + 1
-                                },
-                                totalSamplesWithInfo = it.totalSamplesWithInfo + 1
-                            )
-                        } ?: currentStatus
-                }
-            }
         }
     }
 
