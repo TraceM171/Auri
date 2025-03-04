@@ -86,8 +86,10 @@ class CollectionService(
                 ).map { collector to it }
             }
             .merge()
-            .parMap { (collector, status) ->
+            .onEach { (collector, status) ->
                 updateStatusForCollector(collector, status)
+            }
+            .parMap { (collector, status) ->
                 val newSampleStatus = (status as? CollectorStatus.NewSample) ?: return@parMap null
                 if (!newSampleStatus.sample.hasValidFile()) {
                     Logger.w { "Invalid file for sample ${newSampleStatus.sample.name}, emitted by ${collector.name}: ${newSampleStatus.sample.executable}" }
