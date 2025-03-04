@@ -24,7 +24,8 @@ import it.skrape.core.htmlDocument
 import it.skrape.selects.eachHref
 import it.skrape.selects.html5.a
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.toKotlinLocalDate
@@ -100,7 +101,7 @@ class VirusSignCollector(
         Logger.i { "Found ${alreadyDownloadedSamples.size} already downloaded samples" }
         val newSamples = samplesLinks.filter { File(it.url.path).name !in alreadyDownloadedSamples }
         Logger.i { "Found ${newSamples.size} new samples" }
-        val rawSamples = samplesLinks.mapNotNull { sampleLink ->
+        samplesLinks.mapNotNull { sampleLink ->
             val destination = File(collectionParameters.workingDirectory, File(sampleLink.url.path).name)
             emit(Processing(what = "Sample ${destination.nameWithoutExtension}"))
             if (sampleLink in newSamples) {
@@ -111,18 +112,15 @@ class VirusSignCollector(
                 }
                 Logger.i { "Successfully downloaded sample from ${sampleLink.url}" }
             }
-            extractSamples(destination).map { sample ->
-                RawCollectedSample(
+            extractSamples(destination).forEach { sample ->
+                val rawSample = RawCollectedSample(
                     submissionDate = sampleLink.date,
                     name = sample.nameWithoutExtension,
                     executable = sample
                 )
+                emit(NewSample(rawSample))
             }
-        }.flatten()
-            .asFlow()
-            .map { NewSample(it) }
-
-        emitAll(rawSamples)
+        }
     }
 
     private fun extractSamples(
