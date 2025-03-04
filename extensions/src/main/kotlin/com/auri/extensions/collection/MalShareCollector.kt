@@ -93,7 +93,7 @@ class MalShareCollector(
         Logger.i { "Found ${alreadyDownloadedSamples.size} already downloaded samples" }
         val newSamples = samplesHashes.filter { it.sha1 !in alreadyDownloadedSamples }
         Logger.i { "Found ${newSamples.size} new samples" }
-        val rawSamples = samplesHashes.mapNotNull { sampleHashes ->
+        val rawSamples = samplesHashes.asFlow().mapNotNull { sampleHashes ->
             emit(Processing(what = "Sample ${sampleHashes.sha1}"))
             val destination = File(collectionParameters.workingDirectory, sampleHashes.sha1)
             if (sampleHashes in newSamples) {
@@ -113,8 +113,7 @@ class MalShareCollector(
                 name = destination.nameWithoutExtension,
                 executable = destination
             )
-        }.asFlow()
-            .map { NewSample(it) }
+        }.map { NewSample(it) }
 
         emitAll(rawSamples)
     }
