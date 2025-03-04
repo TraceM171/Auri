@@ -11,6 +11,7 @@ import com.auri.core.common.MissingDependency
 import com.auri.core.common.util.*
 import com.auri.extensions.collection.common.periodicCollection
 import com.auri.extensions.common.sqliteConnection
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.datetime.toKotlinLocalDate
@@ -19,7 +20,7 @@ import org.jetbrains.exposed.dao.IntEntityClass
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.io.File
 import java.net.URI
 import java.time.format.DateTimeFormatter
@@ -107,9 +108,9 @@ class TheZooCollector(
         emitAll(rawSamples)
     }
 
-    private fun Database.getMalwareSamples(): List<MalwareEntity> {
+    private suspend fun Database.getMalwareSamples(): List<MalwareEntity> {
         Logger.d { "Querying theZoo database for malware samples" }
-        val samples = transaction(this) {
+        val samples = newSuspendedTransaction(context = Dispatchers.IO, db = this) {
             MalwareEntity.all().toList()
         }.filter {
             it.type containsMatch this@TheZooCollector.definition.samplesTypeFilter.withMultilineOption()

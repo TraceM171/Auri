@@ -19,9 +19,8 @@ import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.flow.*
 import kotlinx.datetime.toKotlinLocalDate
 import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.io.File
-import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class CollectionService(
@@ -99,15 +98,14 @@ class CollectionService(
                 )
                 SampleWithSourceAndHashes(newSampleStatus.sample, collector, hashes)
             }.filterNotNull()
-            .onEach { delay(10.milliseconds) } // Chill the db access
             .collect { (sample, source, hashes) ->
                 val sampleFile = File(samplesDir, hashes[HashAlgorithms.SHA1]!!)
-                val entityAdded = transaction(auriDB) {
+                val entityAdded = newSuspendedTransaction(context = Dispatchers.IO, db = auriDB) {
                     RawSampleEntity.find {
                         RawSampleTable.sha256 eq hashes[HashAlgorithms.SHA256]!!
                     }.firstOrNull()?.let {
                         Logger.i { "Sample ${sample.name} already exists in the database, skipping" }
-                        return@transaction null
+                        return@newSuspendedTransaction null
                     }
                     val savedEntity = RawSampleEntity.new {
                         this.md5 = hashes[HashAlgorithms.MD5]!!
@@ -158,9 +156,8 @@ class CollectionService(
                     val sampleInfo = sampleInfo
                 }
             }.filterNotNull()
-                .onEach { delay(10.milliseconds) } // Chill the db access
                 .collect { data ->
-                    transaction(auriDB) {
+                    newSuspendedTransaction(context = Dispatchers.IO, db = auriDB) {
                         SampleInfoEntity.new(
                             SampleInfoEntity.id(
                                 sampleId = collectedSample.id.value,

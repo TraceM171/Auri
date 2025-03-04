@@ -14,14 +14,15 @@ import com.auri.conf.model.CollectionPhaseConfig
 import com.auri.conf.model.MainConf
 import com.auri.core.common.util.chainIfNotNull
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.jetbrains.exposed.sql.SchemaUtils
-import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.io.File
 
-fun CoroutineScope.launchSampleCollection(
+suspend fun CoroutineScope.launchSampleCollection(
     baseDirectory: File,
     runbook: File,
     pruneCache: Boolean
@@ -41,7 +42,7 @@ fun CoroutineScope.launchSampleCollection(
     cacheDir.mkdirs()
     samplesDir.mkdirs()
     extensionsDir.mkdirs()
-    transaction(auriDB) {
+    newSuspendedTransaction(context = Dispatchers.IO, db = auriDB) {
         SchemaUtils.create(RawSampleTable, SampleInfoTable)
     }
 
