@@ -23,7 +23,8 @@ import io.ktor.util.cio.*
 import io.ktor.utils.io.*
 import io.ktor.utils.io.streams.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.datetime.toKotlinLocalDate
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -93,29 +94,28 @@ class MalShareCollector(
         Logger.i { "Found ${alreadyDownloadedSamples.size} already downloaded samples" }
         val newSamples = samplesHashes.filter { it.sha1 !in alreadyDownloadedSamples }
         Logger.i { "Found ${newSamples.size} new samples" }
-        val rawSamples = samplesHashes.asFlow().mapNotNull { sampleHashes ->
+        samplesHashes.forEach { sampleHashes ->
             emit(Processing(what = "Sample ${sampleHashes.sha1}"))
             val destination = File(collectionParameters.workingDirectory, sampleHashes.sha1)
             if (sampleHashes in newSamples) {
                 emit(Downloading(what = "Sample ${sampleHashes.sha1}"))
                 api.downloadSample(sampleHashes, destination).getOrElse {
                     Logger.e { "Failed to download sample ${sampleHashes.sha1}: $it" }
-                    return@mapNotNull null
+                    return@forEach
                 }
                 Logger.i { "Successfully downloaded sample ${sampleHashes.sha1}" }
             }
             if (destination.magicNumber() !in definition.samplesMagicNumberFilter) {
                 Logger.i { "Skipping sample ${sampleHashes.sha1} because of its magic number" }
-                return@mapNotNull null
+                return@forEach
             }
-            RawCollectedSample(
+            val rawSample = RawCollectedSample(
                 submissionDate = LocalDate.now().toKotlinLocalDate(),
                 name = destination.nameWithoutExtension,
                 executable = destination
             )
-        }.map { NewSample(it) }
-
-        emitAll(rawSamples)
+            emit(NewSample(rawSample))
+        }
     }
 
     private class Api(
