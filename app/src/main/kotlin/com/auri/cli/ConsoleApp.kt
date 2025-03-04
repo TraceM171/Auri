@@ -2,6 +2,8 @@ package com.auri.cli
 
 import com.auri.app.launchSampleCollection
 import com.auri.collection.CollectionProcessStatus
+import com.auri.core.collection.CollectorStatus
+import com.auri.core.common.util.chainIf
 import com.github.ajalt.clikt.command.SuspendingCliktCommand
 import com.github.ajalt.clikt.command.SuspendingNoOpCliktCommand
 import com.github.ajalt.clikt.command.main
@@ -13,6 +15,7 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.file
 import com.github.ajalt.mordant.animation.animation
+import com.github.ajalt.mordant.rendering.TextColors
 import com.github.ajalt.mordant.table.table
 import com.github.ajalt.mordant.table.verticalLayout
 import com.github.ajalt.mordant.widgets.Text
@@ -72,14 +75,51 @@ private class Collection : SuspendingCliktCommand(name = "collection") {
                 cell(Text("Phase: Collection"))
                 cell(Text("Status: ${processStatus::class.simpleName}"))
                 if (processStatus is CollectionProcessStatus.Collecting) {
-                    cell(Text("Collected samples: ${processStatus.totalSamplesCollected}"))
+                    cell(Text("Samples collected: ${processStatus.totalSamplesCollected}"))
+                    cell(Text("Samples With Info: ${processStatus.totalSamplesWithInfo}"))
                     cell(table {
                         header {
-                            row("Source", "Status")
+                            row("Source", "Samples", "Status")
                         }
                         body {
-                            processStatus.collectorsStatus.forEach {
-                                row(it.key::class.simpleName, it.value?.let { it::class.simpleName } ?: "N/A")
+                            processStatus.collectorsStatus.forEach { (collector, status) ->
+                                row {
+                                    cell(collector::class.simpleName)
+                                    cell(processStatus.samplesCollectedByCollector[collector])
+                                    when (status) {
+                                        CollectorStatus.Done -> cell("Done") {
+                                            style(color = TextColors.brightGreen)
+                                        }
+
+                                        CollectorStatus.DoneUntilNextPeriod -> cell("Done until next period") {
+                                            style(color = TextColors.green)
+                                        }
+
+                                        is CollectorStatus.Downloading -> cell("Downloading ${status.what.elipsis(25)}") {
+                                            style(color = TextColors.brightBlue)
+                                        }
+
+                                        is CollectorStatus.NewSample -> cell("New sample ${status.sample.name.elipsis(20)}") {
+                                            style(color = TextColors.brightCyan)
+                                        }
+
+                                        is CollectorStatus.Processing -> cell("Processing ${status.what.elipsis(25)}") {
+                                            style(color = TextColors.blue)
+                                        }
+
+                                        is CollectorStatus.Failed -> cell("Failed ${status.what}: ${status.why}") {
+                                            style(color = TextColors.brightRed)
+                                        }
+
+                                        is CollectorStatus.Retrying -> cell("Retrying ${status.what}: ${status.why}") {
+                                            style(color = TextColors.red)
+                                        }
+
+                                        null -> cell("N/A") {
+                                            style(color = TextColors.gray)
+                                        }
+                                    }
+                                }
                             }
                         }
                     })
@@ -117,3 +157,14 @@ private fun ParameterHolder.pruneCache() = option(
     default = false,
     defaultForHelp = "false"
 )
+
+
+private fun String.elipsis(maxLength: Int, elipsisText: String = "…"): String {
+    val tipPointLength = (maxLength - elipsisText.length).coerceAtLeast(0)
+    return chainIf(length > tipPointLength) {
+        buildString {
+            append(this@elipsis.take(tipPointLength))
+            append(elipsisText)
+        }
+    }
+}
