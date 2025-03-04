@@ -76,7 +76,6 @@ private class Collection : SuspendingCliktCommand(name = "collection") {
                 cell(Text("Status: ${processStatus::class.simpleName}"))
                 if (processStatus is CollectionProcessStatus.Collecting) {
                     cell(Text("Samples collected: ${processStatus.totalSamplesCollected}"))
-                    cell(Text("Samples With Info: ${processStatus.totalSamplesWithInfo}"))
                     cell(table {
                         header {
                             row("Source", "Samples", "Status")
@@ -84,7 +83,7 @@ private class Collection : SuspendingCliktCommand(name = "collection") {
                         body {
                             processStatus.collectorsStatus.forEach { (collector, status) ->
                                 row {
-                                    cell(collector::class.simpleName)
+                                    cell(collector.name)
                                     cell(processStatus.samplesCollectedByCollector[collector])
                                     when (status) {
                                         CollectorStatus.Done -> cell("Done") {
@@ -119,6 +118,20 @@ private class Collection : SuspendingCliktCommand(name = "collection") {
                                             style(color = TextColors.gray)
                                         }
                                     }
+                                }
+                            }
+                        }
+                    })
+                    cell(Text("Samples with info: ${processStatus.totalSamplesWithInfo}"))
+                    cell(table {
+                        header {
+                            row("Provider", "Info found")
+                        }
+                        body {
+                            processStatus.samplesWithInfoByProvider.forEach { (provider, samplesWithInfo) ->
+                                row {
+                                    cell(provider.name)
+                                    cell(samplesWithInfo)
                                 }
                             }
                         }
