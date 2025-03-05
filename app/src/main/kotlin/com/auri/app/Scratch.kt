@@ -12,7 +12,7 @@ fun main(): Unit = runBlocking {
         baseDirectory = baseDirectory,
         runbook = runbook,
         pruneCache = false,
-        minLogSeverity = Severity.Warn
+        minLogSeverity = Severity.Debug
     ).collect {
         println(it)
     }

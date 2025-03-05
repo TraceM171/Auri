@@ -9,7 +9,7 @@ version = "0.0.1"
 
 
 dependencies {
-    api(libs.touchlab.kermit)
+    api(libs.bundles.kermit)
     api(libs.kotlinx.datetime)
     api(libs.bundles.arrow)
 

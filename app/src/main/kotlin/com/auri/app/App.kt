@@ -5,8 +5,11 @@ import arrow.core.raise.either
 import arrow.core.raise.withError
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
+import co.touchlab.kermit.io.RollingFileLogWriter
+import co.touchlab.kermit.io.RollingFileLogWriterConfig
 import com.auri.app.collection.CollectionProcessStatus
 import com.auri.app.collection.CollectionService
+import com.auri.app.common.DefaultMessageFormatter
 import com.auri.app.common.data.entity.RawSampleTable
 import com.auri.app.common.data.entity.SampleInfoTable
 import com.auri.app.common.data.sqliteConnection
@@ -21,6 +24,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
+import kotlinx.io.files.Path
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
@@ -94,9 +98,21 @@ private suspend fun init(
     val cacheDir = File(baseDirectory, "cache/collection")
     val samplesDir = File(baseDirectory, "samples")
     val extensionsDir = File(baseDirectory, "extensions")
+    val logsFile = File(baseDirectory, "auri")
     val auriDB = File(baseDirectory, "auri.db").let(::sqliteConnection)
 
-    Logger.setMinSeverity(minLogSeverity)
+    Logger.run {
+        setMinSeverity(minLogSeverity)
+        setLogWriters(
+            RollingFileLogWriter(
+                config = RollingFileLogWriterConfig(
+                    logFileName = logsFile.name,
+                    logFilePath = Path(logsFile.parent),
+                ),
+                messageStringFormatter = DefaultMessageFormatter("com.auri")
+            )
+        )
+    }
 
     val mainConfig = withError({ InitError.GettingMainConfig(it) }) {
         runbook.configByPrefix<MainConf>().bind()

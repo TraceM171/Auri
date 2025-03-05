@@ -1,7 +1,6 @@
 package com.auri.app.common
 
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.Severity
+import co.touchlab.kermit.*
 import org.slf4j.ILoggerFactory
 import org.slf4j.Marker
 import org.slf4j.event.Level
@@ -9,6 +8,7 @@ import org.slf4j.helpers.AbstractLogger
 import org.slf4j.helpers.BasicMarkerFactory
 import org.slf4j.helpers.NOPMDCAdapter
 import org.slf4j.spi.SLF4JServiceProvider
+import kotlin.streams.asSequence
 
 internal class Slf4jKermitLogger : AbstractLogger() {
     private val logger = Logger
@@ -51,7 +51,7 @@ internal class Slf4jKermitLogger : AbstractLogger() {
         messagePattern.let {
             logger.log(
                 severity,
-                marker?.toString() ?: getName(),
+                marker?.toString().orEmpty(),
                 throwable,
                 formatted ?: (messagePattern ?: "")
             )
@@ -73,4 +73,33 @@ internal class KermitServiceProvider : SLF4JServiceProvider {
     override fun getRequestedApiVersion() = "2.0.99"
 
     override fun initialize() = Unit
+}
+
+class DefaultMessageFormatter(
+    private val basePackageName: String
+) : MessageStringFormatter {
+    private val excludedClasses = listOf(
+        this::class.qualifiedName,
+        Slf4jKermitLogger::class.qualifiedName
+    )
+
+    override fun formatMessage(
+        severity: Severity?,
+        tag: Tag?,
+        message: Message
+    ): String {
+        val callingClass = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).walk { frames ->
+            var firstClass: StackWalker.StackFrame? = null
+            frames.asSequence()
+                .filter { it.className !in excludedClasses }
+                .onEach { if (firstClass == null) firstClass = it }
+                .firstOrNull { it.className.startsWith(basePackageName) }
+                ?: firstClass
+        }?.className
+            ?.substringAfterLast('.')
+            ?.substringBefore('$')
+            ?: "UKNOWN"
+
+        return "[$callingClass] $severity: ${tag?.let { "${it.tag} " }} ${message.message}"
+    }
 }

@@ -6,7 +6,7 @@ kotlinx-serialization-json = "1.8.0"
 kotest = "5.9.1"
 kotest-arrow = "2.0.0"
 ajalt-clikt = "5.0.2"
-touchlab-kermit = "2.0.4"
+touchlab-kermit = "2.0.5"
 arrow = "2.0.1"
 exposed = "0.58.0"
 xeial-sqlite = "3.44.1.0"
@@ -27,6 +27,7 @@ kotest-property = { module = "io.kotest:kotest-property", version.ref = "kotest"
 kotest-arrow = { module = "io.kotest.extensions:kotest-assertions-arrow", version.ref = "kotest-arrow" }
 ajalt-clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "ajalt-clikt" }
 touchlab-kermit = { module = "co.touchlab:kermit", version.ref = "touchlab-kermit" }
+touchlab-kermit-io = { module = "co.touchlab:kermit-io", version.ref = "touchlab-kermit" }
 arrow-core = { module = "io.arrow-kt:arrow-core", version.ref = "arrow" }
 arrow-coroutines = { module = "io.arrow-kt:arrow-fx-coroutines", version.ref = "arrow" }
 arrow-resilience = { module = "io.arrow-kt:arrow-resilience", version.ref = "arrow" }
@@ -40,15 +41,13 @@ lingala-zip4j = { module = "net.lingala.zip4j:zip4j", version.ref = "lingala-zip
 hoplite-core = { module = "com.sksamuel.hoplite:hoplite-core", version.ref = "hoplite" }
 hoplite-yaml = { module = "com.sksamuel.hoplite:hoplite-yaml", version.ref = "hoplite" }
 hoplite-arrow = { module = "com.sksamuel.hoplite:hoplite-arrow", version.ref = "hoplite" }
-koin-bom = { module = "io.insert-koin:koin-bom", version.ref = "koin-bom" }
-koin-core = { module = "io.insert-koin:koin-core" }
-classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 ktor-client-auth = { module = "io.ktor:ktor-client-auth", version.ref = "ktor" }
 skrapeit = { module = "it.skrape:skrapeit", version.ref = "skrapeit" }
 
 [bundles]
+kermit = ["touchlab-kermit", "touchlab-kermit-io"]
 kotest = ["kotest-junit5", "kotest-assertions-core", "kotest-property", "kotest-arrow"]
 arrow = ["arrow-core", "arrow-coroutines", "arrow-resilience"]
 exposed = ["exposed-core", "exposed-jdbc", "xerial-sqlite", "exposed-dao", "exposed-kotlin-datetime", "exposed-json"]
