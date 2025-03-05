@@ -55,7 +55,7 @@ class TheZooCollector(
 
     override suspend fun checkDependencies(): List<MissingDependency> = buildList {
         DependencyChecks.checkGitAvailable(
-            use = "cloning the source repository",
+            neededTo = "clone the source repository",
         )?.let(::add)
     }
 

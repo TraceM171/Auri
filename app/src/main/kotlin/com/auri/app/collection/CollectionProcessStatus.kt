@@ -14,18 +14,19 @@ sealed interface CollectionProcessStatus {
         CollectionProcessStatus
 
     data class Collecting(
-        val collectorsStatus: Map<Collector, CollectorStatus?>,
-        val samplesCollectedByCollector: Map<Collector, Int>,
-        val totalSamplesCollected: Int,
-        val samplesWithInfoByProvider: Map<InfoProvider, Int>,
-        val totalSamplesWithInfo: Int
+        val collectionStats: CollectionStats
     ) : CollectionProcessStatus
 
     data class Finished(
+        val collectionStats: CollectionStats
+    ) : CollectionProcessStatus
+
+
+    data class CollectionStats(
         val collectorsStatus: Map<Collector, CollectorStatus?>,
         val samplesCollectedByCollector: Map<Collector, Int>,
         val totalSamplesCollected: Int,
         val samplesWithInfoByProvider: Map<InfoProvider, Int>,
         val totalSamplesWithInfo: Int
-    ) : CollectionProcessStatus
+    )
 }

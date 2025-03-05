@@ -41,14 +41,15 @@ internal class CollectionService(
             launchInfoProviderStep(collectionFlow)
         }
         _collectionStatus.update {
-            val collectingOrNull = it as? CollectionProcessStatus.Collecting
+            val collectingOrNull = (it as? CollectionProcessStatus.Collecting ?: return@update it).collectionStats
             CollectionProcessStatus.Finished(
-                collectorsStatus = collectingOrNull?.collectorsStatus ?: emptyMap(),
-                samplesCollectedByCollector = collectingOrNull?.samplesCollectedByCollector
-                    ?: emptyMap(),
-                totalSamplesCollected = collectingOrNull?.totalSamplesCollected ?: 0,
-                samplesWithInfoByProvider = collectingOrNull?.samplesWithInfoByProvider ?: emptyMap(),
-                totalSamplesWithInfo = collectingOrNull?.totalSamplesWithInfo ?: 0
+                CollectionProcessStatus.CollectionStats(
+                    collectorsStatus = collectingOrNull.collectorsStatus,
+                    samplesCollectedByCollector = collectingOrNull.samplesCollectedByCollector,
+                    totalSamplesCollected = collectingOrNull.totalSamplesCollected,
+                    samplesWithInfoByProvider = collectingOrNull.samplesWithInfoByProvider,
+                    totalSamplesWithInfo = collectingOrNull.totalSamplesWithInfo
+                )
             )
         }
     }
@@ -68,11 +69,13 @@ internal class CollectionService(
         }
         _collectionStatus.update {
             CollectionProcessStatus.Collecting(
-                collectorsStatus = collectors.associateWith { null },
-                samplesCollectedByCollector = collectors.associateWith { 0 },
-                totalSamplesCollected = 0,
-                samplesWithInfoByProvider = infoProviders.associateWith { 0 },
-                totalSamplesWithInfo = 0
+                CollectionProcessStatus.CollectionStats(
+                    collectorsStatus = collectors.associateWith { null },
+                    samplesCollectedByCollector = collectors.associateWith { 0 },
+                    totalSamplesCollected = 0,
+                    samplesWithInfoByProvider = infoProviders.associateWith { 0 },
+                    totalSamplesWithInfo = 0
+                )
             )
         }
 
@@ -130,10 +133,13 @@ internal class CollectionService(
                     (currentStatus as? CollectionProcessStatus.Collecting)
                         ?.let {
                             it.copy(
-                                samplesCollectedByCollector = it.samplesCollectedByCollector.toMutableMap().apply {
-                                    this[source] = (this[source] ?: 0) + 1
-                                },
-                                totalSamplesCollected = it.totalSamplesCollected + 1
+                                collectionStats = it.collectionStats.copy(
+                                    samplesCollectedByCollector = it.collectionStats.samplesCollectedByCollector.toMutableMap()
+                                        .apply {
+                                            this[source] = (this[source] ?: 0) + 1
+                                        },
+                                    totalSamplesCollected = it.collectionStats.totalSamplesCollected + 1
+                                )
                             )
                         } ?: currentStatus
                 }
@@ -178,10 +184,13 @@ internal class CollectionService(
                         (currentStatus as? CollectionProcessStatus.Collecting)
                             ?.let {
                                 it.copy(
-                                    samplesWithInfoByProvider = it.samplesWithInfoByProvider.toMutableMap().apply {
-                                        this[data.infoProvider] = (this[data.infoProvider] ?: 0) + 1
-                                    },
-                                    totalSamplesWithInfo = it.totalSamplesWithInfo + 1
+                                    collectionStats = it.collectionStats.copy(
+                                        samplesWithInfoByProvider = it.collectionStats.samplesWithInfoByProvider.toMutableMap()
+                                            .apply {
+                                                this[data.infoProvider] = (this[data.infoProvider] ?: 0) + 1
+                                            },
+                                        totalSamplesWithInfo = it.collectionStats.totalSamplesWithInfo + 1
+                                    )
                                 )
                             } ?: currentStatus
                     }
@@ -196,9 +205,11 @@ internal class CollectionService(
         (currentStatus as? CollectionProcessStatus.Collecting)
             ?.let {
                 it.copy(
-                    it.collectorsStatus.toMutableMap().apply {
-                        this[collector] = status
-                    }
+                    collectionStats = it.collectionStats.copy(
+                        it.collectionStats.collectorsStatus.toMutableMap().apply {
+                            this[collector] = status
+                        }
+                    )
                 )
             }
             ?: currentStatus

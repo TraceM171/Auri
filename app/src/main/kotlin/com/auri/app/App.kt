@@ -15,8 +15,9 @@ import com.auri.app.conf.model.MainConf
 import com.auri.core.common.util.chainIfNotNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
@@ -26,7 +27,7 @@ suspend fun CoroutineScope.launchSampleCollection(
     baseDirectory: File,
     runbook: File,
     pruneCache: Boolean
-): StateFlow<CollectionProcessStatus> {
+): Flow<CollectionProcessStatus> {
     val cacheDir = File(baseDirectory, "cache/collection")
     val samplesDir = File(baseDirectory, "samples")
     val extensionsDir = File(baseDirectory, "extensions")
@@ -75,5 +76,17 @@ suspend fun CoroutineScope.launchSampleCollection(
     )
     launch { collectionService.run() }
 
-    return collectionService.collectionStatus
+    return collectionService.collectionStatus.transformWhile {
+        emit(it)
+
+        when (it) {
+            is CollectionProcessStatus.Collecting,
+            CollectionProcessStatus.Initializing,
+            CollectionProcessStatus.NotStarted -> true
+
+            is CollectionProcessStatus.Finished,
+            is CollectionProcessStatus.MissingDependencies,
+            is CollectionProcessStatus.Failed -> false
+        }
+    }
 }
