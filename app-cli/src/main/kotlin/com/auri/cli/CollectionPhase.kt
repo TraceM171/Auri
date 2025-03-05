@@ -2,6 +2,7 @@ package com.auri.cli
 
 import com.auri.app.collection.CollectionProcessStatus
 import com.auri.app.launchSampleCollection
+import com.auri.cli.common.*
 import com.auri.core.collection.CollectorStatus
 import com.github.ajalt.clikt.command.SuspendingCliktCommand
 import com.github.ajalt.clikt.core.Context
@@ -21,7 +22,7 @@ import kotlin.time.Duration.Companion.seconds
 
 class Collection : SuspendingCliktCommand(name = "collection") {
     private val phaseDescription = """
-        The Collection Phase is the first phase of the AURI pipeline. It is responsible for collecting malware samples from various sources and storing them in a database.
+        The Collection Phase is the first phase of the AURI pipeline. It is responsible for collecting malware samples from various sources and storing them in the database.
     """.trimIndent()
 
     override fun help(context: Context): String = phaseDescription
@@ -29,12 +30,14 @@ class Collection : SuspendingCliktCommand(name = "collection") {
     private val baseDirectory: File by baseDirectory()
     private val runbook: File by runbook()
     private val pruneCache: Boolean by pruneCache()
+    private val verbosity: Int by verbosity()
 
     override suspend fun run(): Unit = coroutineScope {
         val collectionProcessStatus = launchSampleCollection(
             baseDirectory = baseDirectory,
             runbook = runbook,
-            pruneCache = pruneCache
+            pruneCache = pruneCache,
+            minLogSeverity = verbosityToSeverity(verbosity)
         )
         terminal.baseAuriTui(
             phaseTitle = collectionPhaseTitle(),

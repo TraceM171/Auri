@@ -1,5 +1,6 @@
 package com.auri.app
 
+import co.touchlab.kermit.Severity
 import kotlinx.coroutines.runBlocking
 import java.io.File
 
@@ -10,7 +11,8 @@ fun main(): Unit = runBlocking {
     launchSampleCollection(
         baseDirectory = baseDirectory,
         runbook = runbook,
-        pruneCache = false
+        pruneCache = false,
+        minLogSeverity = Severity.Warn
     ).collect {
         println(it)
     }

@@ -1,4 +1,4 @@
-package com.auri.cli
+package com.auri.cli.common
 
 import com.auri.core.common.util.atLeastEvery
 import com.github.ajalt.colormath.model.Oklab

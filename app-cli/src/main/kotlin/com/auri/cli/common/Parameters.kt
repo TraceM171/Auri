@@ -1,10 +1,8 @@
-package com.auri.cli
+package com.auri.cli.common
 
+import co.touchlab.kermit.Severity
 import com.github.ajalt.clikt.core.ParameterHolder
-import com.github.ajalt.clikt.parameters.options.check
-import com.github.ajalt.clikt.parameters.options.defaultLazy
-import com.github.ajalt.clikt.parameters.options.flag
-import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.*
 import com.github.ajalt.clikt.parameters.types.file
 import java.io.File
 import java.nio.file.Paths
@@ -34,3 +32,15 @@ fun ParameterHolder.pruneCache() = option(
     default = false,
     defaultForHelp = "false"
 )
+
+fun ParameterHolder.verbosity() = option(
+    "-v",
+    help = "Set verbosity to use when logging."
+).counted(limit = 3, clamp = true)
+
+fun verbosityToSeverity(verbosity: Int): Severity = when (verbosity) {
+    1 -> Severity.Info
+    2 -> Severity.Debug
+    3 -> Severity.Verbose
+    else -> Severity.Warn
+}
