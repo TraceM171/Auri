@@ -10,7 +10,7 @@ inline fun <T> T.chainIf(
     block: T.() -> T
 ): T {
     contract {
-        callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+        callsInPlace(block, InvocationKind.AT_MOST_ONCE)
     }
     return if (condition) block() else this
 }
@@ -21,7 +21,7 @@ inline fun <T, R : Any> T.chainIfNotNull(
     block: T.(value: R) -> T
 ): T {
     contract {
-        callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+        callsInPlace(block, InvocationKind.AT_MOST_ONCE)
     }
     return value?.let { block(it) } ?: this
 }

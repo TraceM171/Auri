@@ -12,6 +12,7 @@ import com.auri.app.collection.CollectionService
 import com.auri.app.common.DefaultMessageFormatter
 import com.auri.app.common.data.entity.RawSampleTable
 import com.auri.app.common.data.entity.SampleInfoTable
+import com.auri.app.common.data.entity.SampleLivenessCheckTable
 import com.auri.app.common.data.sqliteConnection
 import com.auri.app.common.withExtensions
 import com.auri.app.conf.configByPrefix
@@ -129,7 +130,11 @@ private suspend fun init(
     samplesDir.mkdirs()
     extensionsDir.mkdirs()
     newSuspendedTransaction(context = Dispatchers.IO, db = auriDB) {
-        SchemaUtils.create(RawSampleTable, SampleInfoTable)
+        SchemaUtils.create(
+            RawSampleTable,
+            SampleInfoTable,
+            SampleLivenessCheckTable
+        )
     }
 
     InitContext(

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DeveloperToolsToolWindowSettingsV1" lastSelectedContentNodeId="base64-encoder-decoder">
+    <developerToolsConfigurations>
+      <developerToolConfiguration developerToolId="unarchiver" id="4f35d709-57fb-4cd9-98ea-b2798ac34b98" name="Workbench">
+        <properties>
+          <property key="lastSelectedOpenedDirectoryPath" type="CONFIGURATION" value="kotlin.String|/home/auri/TFM/auri/libs/vbox/webservice/7.1.6" />
+        </properties>
+      </developerToolConfiguration>
+      <developerToolConfiguration developerToolId="base64-encoder-decoder" id="fb62d130-6134-4c11-8363-8fd47c17bc5b" name="Workbench">
+        <properties>
+          <property key="sourceText" type="INPUT" value="kotlin.String|$input = Read-Host &quot;Enter something&quot;; Write-Host &quot;You entered: $input`n&quot;" />
+          <property key="targetText" type="INPUT" value="kotlin.String|JGlucHV0ID0gUmVhZC1Ib3N0ICJFbnRlciBzb21ldGhpbmciOyBXcml0ZS1Ib3N0ICJZb3UgZW50ZXJlZDogJGlucHV0YG4i" />
+        </properties>
+      </developerToolConfiguration>
+    </developerToolsConfigurations>
+    <expandedGroupNodeIds>
+      <expandedGroupNodeId value="cryptography" />
+      <expandedGroupNodeId value="encoder-decoder" />
+      <expandedGroupNodeId value="formatting" />
+      <expandedGroupNodeId value="text" />
+      <expandedGroupNodeId value="text-escape" />
+    </expandedGroupNodeIds>
+  </component>
+</project>

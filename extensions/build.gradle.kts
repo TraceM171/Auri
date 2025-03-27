@@ -17,6 +17,12 @@ dependencies {
     implementation(libs.bundles.ktor)
     implementation(libs.skrapeit)
 
+    implementation("vbox:webservice:7.1.6")
+    implementation("javax.xml.ws:jaxws-api:2.3.1")
+    implementation("com.sun.xml.ws:rt:2.3.7")
+    implementation("com.github.mwiede:jsch:0.2.24")
+
+
     testImplementation(kotlin("test"))
 }
 
