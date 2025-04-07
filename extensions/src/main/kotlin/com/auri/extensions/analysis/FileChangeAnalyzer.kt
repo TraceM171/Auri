@@ -10,6 +10,7 @@ import com.auri.core.analysis.ChangeReport
 import com.auri.core.analysis.VMInteraction
 import com.auri.core.common.util.getResource
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -79,35 +80,21 @@ class FileChangeAnalyzer(
         catch(
             {
                 coroutineScope {
-                    val result = async(Dispatchers.IO) { command.run() }
-                    launch(Dispatchers.IO) {
-                        command.commandError.await().lineSequence().forEach {
+                    val result = async(Job()) { command.run() }
+                    launch {
+                        command.commandError.consumeAsFlow().collect {
                             Logger.e { "Command error : $it" }
-                            error(it)
+                            result.cancel()
                         }
                     }
                     val state = definition.files.associateWith { path ->
-                        withContext(Dispatchers.IO) {
-                            command.commandInput.await().apply {
-                                catch(
-                                    {
-                                        write("${path.value}\n")
-                                        flush()
-                                    },
-                                    { raise(Unit) }
-                                )
-                            }
-                        }
-                        withContext(Dispatchers.IO) {
-                            command.commandOutput.await().lineSequence().firstOrNull()?.let(::parseScriptResult)
-                                ?.onLeft {
-                                    Logger.e { "Failed to parse script result" }
-                                }?.bind()
-                                ?: emptySet()
-                        }
+                        command.commandInput.send("${path.value}\n")
+                        command.commandOutput.receive().let(::parseScriptResult)
+                            .onLeft {
+                                Logger.e { "Failed to parse script result" }
+                            }.bind()
                     }
-                    command.commandInput.await().close()
-                    result.await().bind()
+                    result.cancelAndJoin()
                     state
                 }
             },

@@ -1,6 +1,11 @@
 package com.auri.extensions
 
+import arrow.core.getOrElse
+import com.auri.extensions.analysis.SSHVMInteraction
+import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import java.net.InetAddress
 
 
 fun main(): Unit = runBlocking {
@@ -42,7 +47,7 @@ fun main(): Unit = runBlocking {
     }
     println("Stopped VM")*/
 
-    /*val interaction = SSHVMInteraction(
+    val interaction = SSHVMInteraction(
         definition = SSHVMInteraction.Definition(
             host = InetAddress.getByName("192.168.56.7"),
             username = """desktop-mvt20j7\josef""",
@@ -50,32 +55,36 @@ fun main(): Unit = runBlocking {
         )
     )
 
-    val analyzer = FileChangeAnalyzer(
+    interaction.awaitReady().getOrElse {
+        println(it)
+        return@runBlocking
+    }
+    interaction.prepareCommand("""${'$'}input | ForEach-Object { Write-Host "${'$'}_" }""").let {
+        launch { it.run() }
+        launch {
+            it.commandInput.apply {
+                send("test\n")
+            }
+        }
+        launch {
+            it.commandOutput.consumeAsFlow().collect {
+                println("Output: $it")
+            }
+        }
+    }
+
+    /*val analyzer = FileChangeAnalyzer(
         definition = FileChangeAnalyzer.Definition(
             files = listOf(
                 FileChangeAnalyzer.VMFilePath("""C:\Users\josef\Downloads\sample.txt"""),
-                FileChangeAnalyzer.VMFilePath("""C:\Users\josef\Downloads\sampleFake.txt""")
             )
         )
     )
-    Logger.i { "Capturing initial state" }
-    analyzer.captureInitialState(
-        File(""),
-        interaction
-    )
-    Logger.i { "Make your changes!" }
-    delay(1.minutes)
-    Logger.i { "Reporting changes" }
-    val hasChanged = analyzer.reportChanges(
+    analyzer.reportChanges(
         File(""),
         interaction
     ).getOrElse {
         println(it)
         return@runBlocking
-    }
-    if (!hasChanged) {
-        Logger.i { "No changes detected" }
-    } else {
-        Logger.i { "Changes detected" }
     }*/
 }

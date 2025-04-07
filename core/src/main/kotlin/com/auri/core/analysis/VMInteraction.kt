@@ -3,9 +3,12 @@ package com.auri.core.analysis
 import arrow.core.Either
 import arrow.core.raise.either
 import com.auri.core.common.ExtensionPoint
-import kotlinx.coroutines.*
-import java.io.BufferedReader
-import java.io.BufferedWriter
+import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.launch
 import java.io.InputStream
 import java.nio.file.Path
 
@@ -70,15 +73,15 @@ interface VMInteraction {
         /**
          * The input stream (stdin) for the command.
          */
-        val commandInput: Deferred<BufferedWriter>,
+        val commandInput: SendChannel<String>,
         /**
          * The output stream (stdout) for the command.
          */
-        val commandOutput: Deferred<BufferedReader>,
+        val commandOutput: ReceiveChannel<String>,
         /**
          * The error stream (stderr) for the command.
          */
-        val commandError: Deferred<BufferedReader>,
+        val commandError: ReceiveChannel<String>,
         private val run: suspend () -> Either<Unit, Int>
     ) {
         /**
@@ -113,22 +116,18 @@ interface VMInteraction {
             input: String? = null
         ) = either {
             coroutineScope {
-                val output = async(Dispatchers.IO) {
+                val output = async {
                     buildString {
-                        commandError.await().useLines { it.forEach(::appendLine) }
+                        commandError.consumeAsFlow().collect(::appendLine)
                     }
                 }
-                val error = async(Dispatchers.IO) {
+                val error = async {
                     buildString {
-                        commandOutput.await().useLines { it.forEach(::appendLine) }
+                        commandOutput.consumeAsFlow().collect(::appendLine)
                     }
                 }
-                launch(Dispatchers.IO) {
-                    if (input != null) {
-                        commandInput.await().write(input)
-                        commandInput.await().flush()
-                    }
-                    commandInput.await().close()
+                if (input != null) launch {
+                    commandInput.send(input)
                 }
                 val code = run().bind()
                 CodeWithOutput(

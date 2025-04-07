@@ -11,17 +11,20 @@ import co.touchlab.kermit.Logger
 import com.auri.core.analysis.VMInteraction
 import com.auri.core.common.util.catchLog
 import com.auri.core.common.util.installF
+import com.auri.core.common.util.linesFlow
 import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.ChannelSftp
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import java.io.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.consumeAsFlow
+import java.io.BufferedReader
+import java.io.BufferedWriter
+import java.io.InputStream
 import java.net.InetAddress
 import java.nio.file.Path
+import java.util.concurrent.Executors
 import kotlin.io.path.pathString
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -35,6 +38,8 @@ class SSHVMInteraction(
     override val description: String = "Interact with a VM over SSH"
     override val version: String = "0.0.1"
 
+    private val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+
     data class Definition(
         val customName: String = "SSH VM Interaction",
         val host: InetAddress,
@@ -44,25 +49,39 @@ class SSHVMInteraction(
         val connectionTimeout: Duration = 5.seconds,
     )
 
-    override suspend fun awaitReady(): Either<Unit, Unit> = Schedule
-        .spaced<Unit>(2.seconds)
-        .and(Schedule.recurs(10))
-        .retryEither {
-            resourceScope {
-                init(testConn = true).map { }
+    override suspend fun awaitReady(): Either<Unit, Unit> = withContext(dispatcher) {
+        Schedule
+            .spaced<Unit>(2.seconds)
+            .and(Schedule.recurs(10))
+            .retryEither {
+                resourceScope {
+                    init(testConn = true).map { }
+                }
             }
-        }
+    }
 
     override fun prepareCommand(command: String): VMInteraction.Command {
-        val commandInput = CompletableDeferred<BufferedWriter>()
-        val commandOutput = CompletableDeferred<BufferedReader>()
-        val commandError = CompletableDeferred<BufferedReader>()
+        val commandInputChannel = Channel<String>()
+        val commandOutputChannel = Channel<String>()
+        val commandErrorChannel = Channel<String>()
 
         val runBlock = suspend {
             either {
-                withContext(Dispatchers.IO) {
+                withContext(dispatcher) {
                     resourceScope {
                         Logger.d { "Running command: $command" }
+                        installF(
+                            {},
+                            { commandInputChannel.close() }
+                        )
+                        installF(
+                            {},
+                            { commandOutputChannel.close() }
+                        )
+                        installF(
+                            {},
+                            { commandErrorChannel.close() }
+                        )
                         val session = init().bind()
 
                         val channel = installF(
@@ -74,39 +93,48 @@ class SSHVMInteraction(
                         )
                         channel.setCommand(command)
                         catchLog("Failed to connect to SSH channel") { channel.connect(definition.connectionTimeout.inWholeMilliseconds.toInt()) }
-                        channel.apply {
-                            installF(
-                                { outputStream.bufferedWriter() },
-                                release = BufferedWriter::close
-                            ).let(commandInput::complete)
-                            installF(
-                                { inputStream.bufferedReader() },
-                                release = BufferedReader::close
-                            ).let(commandOutput::complete)
-                            installF(
-                                { errStream.bufferedReader() },
-                                release = BufferedReader::close
-                            ).let(commandError::complete)
-                        }
                         Logger.d { "Waiting for command to finish" }
+                        val channelInputStream = installF(
+                            { channel.inputStream.bufferedReader() },
+                            BufferedReader::close
+                        )
+                        val channelOutputStream = installF(
+                            { channel.outputStream.bufferedWriter() },
+                            BufferedWriter::close
+                        )
+                        val channelErrorStream = installF(
+                            { channel.errStream.bufferedReader() },
+                            BufferedReader::close
+                        )
+                        val commandChannelsJob = Job()
+                        launch(commandChannelsJob) {
+                            commandInputChannel.consumeAsFlow().collect { input ->
+                                channelOutputStream.write(input)
+                                channelOutputStream.flush()
+                            }
+                        }
+                        launch(commandChannelsJob) {
+                            channelInputStream.linesFlow().collect { line ->
+                                commandOutputChannel.send(line)
+                            }
+                        }
+                        launch(commandChannelsJob) {
+                            channelErrorStream.linesFlow().collect { line ->
+                                commandErrorChannel.send(line)
+                            }
+                        }
                         val took = measureTime { while (!channel.isClosed) delay(100.milliseconds) }
                         Logger.d { "Command took $took" }
+                        commandChannelsJob.cancelAndJoin()
                         channel.exitStatus
                     }
                 }
-            }.onLeft {
-                if (!commandInput.isCompleted)
-                    commandInput.complete(Writer.nullWriter().buffered())
-                if (!commandOutput.isCompleted)
-                    commandOutput.complete(Reader.nullReader().buffered())
-                if (!commandError.isCompleted)
-                    commandError.complete(Reader.nullReader().buffered())
             }
         }
         val commandObject = VMInteraction.Command(
-            commandInput = commandInput,
-            commandOutput = commandOutput,
-            commandError = commandError,
+            commandInput = commandInputChannel,
+            commandOutput = commandOutputChannel,
+            commandError = commandErrorChannel,
             run = runBlock
         )
         return commandObject
@@ -116,7 +144,7 @@ class SSHVMInteraction(
         source: InputStream,
         remotePath: Path
     ): Either<Unit, Unit> = either {
-        withContext(Dispatchers.IO) {
+        withContext(dispatcher) {
             resourceScope {
                 Logger.d { "Sending file to $remotePath" }
                 val session = init().bind()

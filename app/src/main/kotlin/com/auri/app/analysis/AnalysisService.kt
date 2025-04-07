@@ -133,7 +133,7 @@ internal class AnalysisService(
             )
         }
         var collectionError = false
-        allSamples.collect { entity -> // TODO: remove limit, used for testing
+        allSamples.collect { entity ->
             Logger.d { "Starting analysis for sample ${entity.name}" }
             val samplePath = samplesDir.resolve(entity.path)
             _analysisStatus.update {
