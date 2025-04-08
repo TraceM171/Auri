@@ -38,6 +38,15 @@ fun ParameterHolder.verbosity() = option(
     help = "Set verbosity to use when logging."
 ).counted(limit = 3, clamp = true)
 
+fun ParameterHolder.streamed() = option(
+    "-s", "--streamed",
+    help = "Never finishes the phase, it will keep waiting for new samples to be collected."
+).flag(
+    "--no-streamed",
+    default = false,
+    defaultForHelp = "false"
+)
+
 fun verbosityToSeverity(verbosity: Int): Severity = when (verbosity) {
     1 -> Severity.Info
     2 -> Severity.Debug

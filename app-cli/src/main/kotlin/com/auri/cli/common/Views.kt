@@ -6,6 +6,7 @@ import com.github.ajalt.colormath.model.SRGB
 import com.github.ajalt.colormath.transform.interpolator
 import com.github.ajalt.colormath.transform.sequence
 import com.github.ajalt.mordant.animation.animation
+import com.github.ajalt.mordant.rendering.TextAlign
 import com.github.ajalt.mordant.rendering.TextColors
 import com.github.ajalt.mordant.rendering.TextStyles
 import com.github.ajalt.mordant.table.VerticalLayoutBuilder
@@ -33,14 +34,15 @@ suspend fun <T> Terminal.baseAuriTui(
     println()
     val mainAnimation = animation<T> { data ->
         verticalLayout {
+            align = TextAlign.LEFT
             cell(horizontalLayout {
                 style(italic = true, dim = false)
                 cell(Spinner.Dots(initial = ((startMark.elapsedNow().inWholeMilliseconds / 100) % 10).toInt()))
                 cell(Text("Running for ${startMark.elapsedNow().inWholeSeconds.seconds}"))
             })
-            cell(Text(""))
+            cell("")
             phaseTui(data)
-            cell(Text(""))
+            cell("")
         }
     }
 

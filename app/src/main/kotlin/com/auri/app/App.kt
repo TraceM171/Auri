@@ -7,6 +7,8 @@ import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import co.touchlab.kermit.io.RollingFileLogWriter
 import co.touchlab.kermit.io.RollingFileLogWriterConfig
+import com.auri.app.analysis.AnalysisProcessStatus
+import com.auri.app.analysis.AnalysisService
 import com.auri.app.collection.CollectionProcessStatus
 import com.auri.app.collection.CollectionService
 import com.auri.app.common.DefaultMessageFormatter
@@ -16,13 +18,14 @@ import com.auri.app.common.data.entity.SampleLivenessCheckTable
 import com.auri.app.common.data.sqliteConnection
 import com.auri.app.common.withExtensions
 import com.auri.app.conf.configByPrefix
+import com.auri.app.conf.model.AnalysisPhaseConfig
 import com.auri.app.conf.model.CollectionPhaseConfig
 import com.auri.app.conf.model.MainConf
 import com.auri.core.common.util.chainIfNotNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
@@ -44,7 +47,7 @@ suspend fun CoroutineScope.launchSampleCollection(
         pruneCache = pruneCache
     ).getOrElse {
         return when (it) {
-            is InitError.GettingMainConfig -> MutableStateFlow(
+            is InitError.GettingMainConfig -> flowOf(
                 CollectionProcessStatus.Failed(
                     what = "Failed to load main segment of runbook",
                     why = it.cause.message ?: "Unknown error"
@@ -57,7 +60,7 @@ suspend fun CoroutineScope.launchSampleCollection(
         classLoader = initContext.classLoader,
         prefix = "collectionPhase"
     ).getOrElse {
-        return MutableStateFlow(
+        return flowOf(
             CollectionProcessStatus.Failed(
                 what = "Failed to load collection phase segment of runbook",
                 why = it.message ?: "Unknown error"
@@ -85,6 +88,71 @@ suspend fun CoroutineScope.launchSampleCollection(
             is CollectionProcessStatus.Finished,
             is CollectionProcessStatus.MissingDependencies,
             is CollectionProcessStatus.Failed -> false
+        }
+    }
+}
+
+suspend fun CoroutineScope.launchSampleAnalysis(
+    baseDirectory: File,
+    runbook: File,
+    minLogSeverity: Severity,
+    pruneCache: Boolean,
+    streamed: Boolean
+): Flow<AnalysisProcessStatus> {
+    val initContext = init(
+        baseDirectory = baseDirectory,
+        runbook = runbook,
+        minLogSeverity = minLogSeverity,
+        pruneCache = pruneCache
+    ).getOrElse {
+        return when (it) {
+            is InitError.GettingMainConfig -> flowOf(
+                AnalysisProcessStatus.Failed(
+                    what = "Failed to load main segment of runbook",
+                    why = it.cause.message ?: "Unknown error"
+                )
+            )
+        }
+    }
+
+    val phaseConfig = runbook.configByPrefix<AnalysisPhaseConfig>(
+        classLoader = initContext.classLoader,
+        prefix = "analysisPhase"
+    ).getOrElse {
+        return flowOf(
+            AnalysisProcessStatus.Failed(
+                what = "loading analysis phase segment of runbook",
+                why = it.message ?: "Unknown error"
+            )
+        )
+    }
+
+    val analysisService = AnalysisService(
+        cacheDir = initContext.cacheDir,
+        samplesDir = initContext.samplesDir.toPath(),
+        auriDB = initContext.auriDB,
+        sampleExecutionPath = phaseConfig.sampleExecutionPath,
+        vmManager = phaseConfig.vmManager,
+        vmInteraction = phaseConfig.vmInteraction,
+        analyzers = phaseConfig.analyzers,
+        markAsInactiveAfter = phaseConfig.markAsInactiveAfter,
+        analyzeEvery = phaseConfig.analyzeEvery,
+        keepListening = phaseConfig.keepListening.takeIf { streamed },
+    )
+    launch { analysisService.run() }
+
+    return analysisService.analysisStatus.transformWhile {
+        emit(it)
+
+        when (it) {
+            is AnalysisProcessStatus.Analyzing,
+            AnalysisProcessStatus.Initializing,
+            is AnalysisProcessStatus.CapturingGoodState,
+            AnalysisProcessStatus.NotStarted -> true
+
+            is AnalysisProcessStatus.Finished,
+            is AnalysisProcessStatus.MissingDependencies,
+            is AnalysisProcessStatus.Failed -> false
         }
     }
 }

@@ -2,15 +2,22 @@ package com.auri.extensions.analysis
 
 import arrow.core.Either
 import arrow.core.getOrElse
+import arrow.core.left
 import arrow.core.raise.catch
 import arrow.core.raise.either
+import arrow.core.right
 import co.touchlab.kermit.Logger
 import com.auri.core.analysis.Analyzer
 import com.auri.core.analysis.ChangeReport
 import com.auri.core.analysis.VMInteraction
 import com.auri.core.common.util.getResource
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.selects.select
 import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -57,7 +64,9 @@ class FileChangeAnalyzer(
         workingDirectory: File,
         interaction: VMInteraction
     ): Either<Unit, ChangeReport> = either {
-        val currentState = getCurrentState(interaction).getOrElse { return@either ChangeReport.AccessLost }
+        val currentState = getCurrentState(interaction).getOrElse {
+            return@either ChangeReport.AccessLost
+        }
         val changesFound = currentState.map { (path, currentFeatures) ->
             val initialFeatures = initialState[path] ?: emptySet()
             currentFeatures.map { currentFeature ->
@@ -77,29 +86,31 @@ class FileChangeAnalyzer(
             .bufferedReader()
             .use(BufferedReader::readText)
         val command = interaction.prepareCommand(script)
-        catch(
-            {
-                coroutineScope {
-                    val result = async(Job()) { command.run() }
-                    launch {
-                        command.commandError.consumeAsFlow().collect {
-                            Logger.e { "Command error : $it" }
-                            result.cancel()
-                        }
-                    }
-                    val state = definition.files.associateWith { path ->
+        coroutineScope {
+            val job = Job()
+            val result = select {
+                async(job) { command.run() }.onAwait { Unit.left() }
+                async(job) {
+                    command.commandError.consumeAsFlow().onEach {
+                        Logger.e { "Command error : $it" }
+                    }.firstOrNull()
+                }.onAwait { Unit.left() }
+                async(job) {
+                    definition.files.associateWith { path ->
                         command.commandInput.send("${path.value}\n")
                         command.commandOutput.receive().let(::parseScriptResult)
-                            .onLeft {
+                            .getOrElse {
                                 Logger.e { "Failed to parse script result" }
-                            }.bind()
+                                error("Failed to parse script result")
+                            }
                     }
-                    result.cancelAndJoin()
-                    state
+                }.onAwait {
+                    it.right()
                 }
-            },
-            { raise(Unit) }
-        )
+            }.bind()
+            job.cancel()
+            result
+        }
     }
 
     private fun parseScriptResult(scriptResult: String) = either {
@@ -119,8 +130,9 @@ class FileChangeAnalyzer(
                 .content
                 .toBoolean()
                 .let { FileFeatureState.ExistenceState(it) }
-                .also(::add)
-                .also {
+                .takeIf { FileFeature.Existence in definition.featuresToTrack }
+                ?.also(::add)
+                ?.also {
                     if (!it.exists) return@buildSet
                 }
             resultJson
@@ -134,7 +146,8 @@ class FileChangeAnalyzer(
                 .content
                 .toLong()
                 .let { FileFeatureState.SizeState(it) }
-                .let(::add)
+                .takeIf { FileFeature.Size in definition.featuresToTrack }
+                ?.also(::add)
             resultJson
                 .getOrElse("CreationTime") { raise(Unit) }
                 .run {
@@ -146,7 +159,8 @@ class FileChangeAnalyzer(
                 .content
                 .let { Instant.parse(it) }
                 .let { FileFeatureState.CreatedState(it) }
-                .let(::add)
+                .takeIf { FileFeature.Created in definition.featuresToTrack }
+                ?.also(::add)
             resultJson
                 .getOrElse("LastModified") { raise(Unit) }
                 .run {
@@ -158,7 +172,8 @@ class FileChangeAnalyzer(
                 .content
                 .let { Instant.parse(it) }
                 .let { FileFeatureState.LastModifiedState(it) }
-                .let(::add)
+                .takeIf { FileFeature.LastModified in definition.featuresToTrack }
+                ?.also(::add)
             resultJson
                 .getOrElse("LastAccessTime") { raise(Unit) }
                 .run {
@@ -170,7 +185,8 @@ class FileChangeAnalyzer(
                 .content
                 .let { Instant.parse(it) }
                 .let { FileFeatureState.LastAccessedState(it) }
-                .let(::add)
+                .takeIf { FileFeature.LastAccessed in definition.featuresToTrack }
+                ?.also(::add)
             resultJson
                 .getOrElse("Attributes") { raise(Unit) }
                 .run {
@@ -183,7 +199,8 @@ class FileChangeAnalyzer(
                 .split(',')
                 .toSet()
                 .let { FileFeatureState.AttributesState(it) }
-                .let(::add)
+                .takeIf { FileFeature.Attributes in definition.featuresToTrack }
+                ?.also(::add)
             resultJson
                 .getOrElse("Hash") { raise(Unit) }
                 .run {
@@ -194,7 +211,8 @@ class FileChangeAnalyzer(
                 }.jsonPrimitive
                 .content
                 .let { FileFeatureState.HashState(it) }
-                .let(::add)
+                .takeIf { FileFeature.Hash in definition.featuresToTrack }
+                ?.also(::add)
         }
     }
 

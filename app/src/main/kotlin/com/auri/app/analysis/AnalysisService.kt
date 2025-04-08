@@ -32,8 +32,6 @@ import java.nio.file.Path
 import java.time.LocalDate
 import kotlin.io.path.inputStream
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
 
 internal class AnalysisService(
     private val cacheDir: File,
@@ -43,8 +41,9 @@ internal class AnalysisService(
     private val vmManager: VMManager,
     private val vmInteraction: VMInteraction,
     private val analyzers: List<Analyzer>,
-    private val markAsInactiveAfter: Duration = 5.minutes,
-    private val analyzeEvery: Duration = 15.seconds,
+    private val markAsInactiveAfter: Duration,
+    private val analyzeEvery: Duration,
+    private val keepListening: KeepListening?
 ) {
     private val _analysisStatus: MutableStateFlow<AnalysisProcessStatus> =
         MutableStateFlow(AnalysisProcessStatus.NotStarted)
@@ -73,9 +72,7 @@ internal class AnalysisService(
             database = auriDB,
             filter = { samplesFilterQuery },
             batchSize = 100,
-            keepListening = KeepListening(
-                pollTime = 1.seconds
-            )
+            keepListening = keepListening
         )
 
         _analysisStatus.update { AnalysisProcessStatus.CapturingGoodState(AnalysisProcessStatus.CapturingGoodState.Step.StartingVM) }

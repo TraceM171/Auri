@@ -7,13 +7,11 @@ import com.auri.core.collection.CollectorStatus
 import com.github.ajalt.clikt.command.SuspendingCliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.terminal
-import com.github.ajalt.mordant.rendering.BorderType
-import com.github.ajalt.mordant.rendering.TextAlign
-import com.github.ajalt.mordant.rendering.TextColors
-import com.github.ajalt.mordant.rendering.TextStyle
+import com.github.ajalt.mordant.rendering.*
 import com.github.ajalt.mordant.table.Borders
 import com.github.ajalt.mordant.table.VerticalLayoutBuilder
 import com.github.ajalt.mordant.table.table
+import com.github.ajalt.mordant.widgets.Text
 import com.github.ajalt.mordant.widgets.definitionList
 import kotlinx.coroutines.coroutineScope
 import kotlinx.datetime.Clock
@@ -56,14 +54,14 @@ private fun VerticalLayoutBuilder.tui(
             cell("Not started") {
                 style(bold = true)
             }
-            cell("The collection will begin shortly")
+            cell(Text("The collection will begin shortly", whitespace = Whitespace.NORMAL))
         }
 
         CollectionProcessStatus.Initializing -> {
             cell("Initializing") {
                 style(bold = true)
             }
-            cell("The collectors are being initialized")
+            cell(Text("The collectors are being initialized", whitespace = Whitespace.NORMAL))
         }
 
         is CollectionProcessStatus.Collecting -> {
@@ -71,11 +69,14 @@ private fun VerticalLayoutBuilder.tui(
                 style(bold = true)
             }
             cell(
-                """
-                All the collectors have been started and its status is shown in the table bellow.
-                This phase will stop when all all the collectors finish.
-                Note that, depending on the runbook, some collectors may be scheduled periodically, thus they may never finish, in this case the phase can be ended by pressing [^C] when the user desires, samples are saved on receive, so none will be lost by ending forcefully.
-            """.trimIndent()
+                Text(
+                    """
+                        All the collectors have been started and its status is shown in the table bellow.
+                        This phase will stop when all all the collectors finish.
+                        Note that, depending on the runbook, some collectors may be scheduled periodically, thus they may never finish, in this case the phase can be ended by pressing [^C] when the user desires, samples are saved on receive, so none will be lost by ending forcefully.
+                    """.trimIndent(),
+                    whitespace = Whitespace.NORMAL
+                )
             )
         }
 
@@ -84,15 +85,18 @@ private fun VerticalLayoutBuilder.tui(
                 style(bold = true)
             }
             cell(
-                """
-                The collection has finished because all the collectors ended and none are scheduled.
-                All samples have been saved.
-            """.trimIndent()
+                Text(
+                    """
+                        The collection has finished because all the collectors ended and none are scheduled.
+                        All samples have been saved.
+                    """.trimIndent(),
+                    whitespace = Whitespace.NORMAL
+                )
             )
         }
 
         is CollectionProcessStatus.MissingDependencies -> {
-            cell("Some needed dependencies are missing") {
+            cell(Text("Some needed dependencies are missing", whitespace = Whitespace.NORMAL)) {
                 style(bold = true, color = TextColors.brightRed)
             }
             cell(
@@ -121,7 +125,12 @@ private fun VerticalLayoutBuilder.tui(
             cell("Failed") {
                 style(bold = true, color = TextColors.brightRed)
             }
-            cell("An error occurred in ${processStatus.what}: ${processStatus.why}") {
+            cell(
+                Text(
+                    "An error occurred in ${processStatus.what}: ${processStatus.why}",
+                    whitespace = Whitespace.NORMAL
+                )
+            ) {
                 style(color = TextColors.brightRed)
             }
         }
@@ -136,12 +145,12 @@ private fun VerticalLayoutBuilder.tui(
             CollectionProcessStatus.NotStarted -> return@run
         }
         cell("")
-        collectionStatsTui(collectionStats)
+        analysisStatsTui(collectionStats)
         cell("")
     }
 }
 
-private fun VerticalLayoutBuilder.collectionStatsTui(collectionStats: CollectionProcessStatus.CollectionStats) {
+private fun VerticalLayoutBuilder.analysisStatsTui(collectionStats: CollectionProcessStatus.CollectionStats) {
     cell(table {
         borderType = BorderType.SQUARE_DOUBLE_SECTION_SEPARATOR
         tableBorders = Borders.ALL
@@ -152,7 +161,7 @@ private fun VerticalLayoutBuilder.collectionStatsTui(collectionStats: Collection
         body {
             collectionStats.collectorsStatus.forEach { (collector, status) ->
                 row {
-                    cell(collector.name)
+                    cell(Text(collector.name, whitespace = Whitespace.NORMAL))
                     cell(collectionStats.samplesCollectedByCollector[collector]) {
                         align = TextAlign.CENTER
                     }
@@ -163,30 +172,60 @@ private fun VerticalLayoutBuilder.collectionStatsTui(collectionStats: Collection
 
                         is CollectorStatus.DoneUntilNextPeriod -> {
                             val nextPeriodIn = status.nextPeriodStart - Clock.System.now()
-                            cell("Done until next period (${nextPeriodIn.inWholeSeconds.seconds})") {
+                            cell(
+                                Text(
+                                    "Done until next period (${nextPeriodIn.inWholeSeconds.seconds})",
+                                    whitespace = Whitespace.NORMAL
+                                )
+                            ) {
                                 style(color = TextColors.green)
                             }
                         }
 
-                        is CollectorStatus.Downloading -> cell("Downloading ${status.what.elipsis(25)}") {
+                        is CollectorStatus.Downloading -> cell(
+                            Text(
+                                "Downloading ${status.what.elipsis(25)}",
+                                whitespace = Whitespace.NORMAL
+                            )
+                        ) {
                             style(color = TextColors.brightBlue)
                         }
 
-                        is CollectorStatus.NewSample -> cell("New sample ${status.sample.name.elipsis(20)}") {
+                        is CollectorStatus.NewSample -> cell(
+                            Text(
+                                "New sample ${status.sample.name.elipsis(20)}",
+                                whitespace = Whitespace.NORMAL
+                            )
+                        ) {
                             style(color = TextColors.brightCyan)
                         }
 
-                        is CollectorStatus.Processing -> cell("Processing ${status.what.elipsis(25)}") {
+                        is CollectorStatus.Processing -> cell(
+                            Text(
+                                "Processing ${status.what.elipsis(25)}",
+                                whitespace = Whitespace.NORMAL
+                            )
+                        ) {
                             style(color = TextColors.blue)
                         }
 
-                        is CollectorStatus.Failed -> cell("Failed ${status.what}: ${status.why}") {
+                        is CollectorStatus.Failed -> cell(
+                            Text(
+                                "Failed ${status.what}: ${status.why}",
+                                whitespace = Whitespace.NORMAL
+                            )
+                        ) {
                             style(color = TextColors.brightRed)
                         }
 
                         is CollectorStatus.Retrying -> {
                             val nextTryIn = status.nextTryStart - Clock.System.now()
-                            cell("Retrying ${status.what} (${nextTryIn.inWholeSeconds.seconds}): ${status.why}") {
+                            cell(
+                                Text(
+                                    "Retrying ${status.what} (${nextTryIn.inWholeSeconds.seconds}): ${status.why}",
+                                    whitespace = Whitespace.NORMAL
+                                )
+                            ) {
                                 style(color = TextColors.red)
                             }
                         }

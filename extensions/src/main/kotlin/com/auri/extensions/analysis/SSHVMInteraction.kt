@@ -72,7 +72,7 @@ class SSHVMInteraction(
                         Logger.d { "Running command: $command" }
                         installF(
                             {},
-                            { commandInputChannel.close() }
+                            { commandInputChannel.cancel() }
                         )
                         installF(
                             {},
@@ -180,7 +180,9 @@ class SSHVMInteraction(
             setConfig("StrictHostKeyChecking", "no")
         }
         catch(
-            { session.connect(definition.connectionTimeout.inWholeMilliseconds.toInt()) },
+            {
+                session.connect(definition.connectionTimeout.inWholeMilliseconds.toInt())
+            },
             {
                 if (!testConn) Logger.w { "Failed to connect to SSH session" }
                 raise(Unit)
