@@ -27,14 +27,13 @@ import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.notExists
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
-import java.io.File
 import java.nio.file.Path
 import java.time.LocalDate
 import kotlin.io.path.inputStream
 import kotlin.time.Duration
 
 internal class AnalysisService(
-    private val cacheDir: File,
+    private val cacheDir: Path,
     private val samplesDir: Path,
     private val auriDB: Database,
     private val sampleExecutionPath: Path,

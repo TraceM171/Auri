@@ -20,13 +20,14 @@ import kotlinx.coroutines.flow.*
 import kotlinx.datetime.toKotlinLocalDate
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
-import java.io.File
+import java.nio.file.Path
 import java.time.LocalDate
+import kotlin.io.path.*
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 internal class CollectionService(
-    private val cacheDir: File,
-    private val samplesDir: File,
+    private val cacheDir: Path,
+    private val samplesDir: Path,
     private val auriDB: Database,
     private val collectors: List<Collector>,
     private val infoProviders: List<InfoProvider>
@@ -81,8 +82,8 @@ internal class CollectionService(
 
         collectors
             .map { collector ->
-                val collectorWorkingDirectory = File(cacheDir, collector.name)
-                collectorWorkingDirectory.mkdirs()
+                val collectorWorkingDirectory = cacheDir.resolve(collector.name)
+                collectorWorkingDirectory.createDirectories()
                 collector.start(
                     Collector.CollectionParameters(
                         workingDirectory = collectorWorkingDirectory
@@ -105,7 +106,7 @@ internal class CollectionService(
                 SampleWithSourceAndHashes(newSampleStatus.sample, collector, hashes)
             }.filterNotNull()
             .collect { (sample, source, hashes) ->
-                val sampleFile = File(samplesDir, hashes[HashAlgorithms.SHA1]!!)
+                val sampleFile = samplesDir.resolve(hashes[HashAlgorithms.SHA1]!!)
                 val entityAdded = newSuspendedTransaction(context = Dispatchers.IO, db = auriDB) {
                     RawSampleEntity.find {
                         RawSampleTable.sha256 eq hashes[HashAlgorithms.SHA256]!!
@@ -120,7 +121,7 @@ internal class CollectionService(
                         this.name = sample.name
                         this.sourceName = source.name
                         this.sourceVersion = source.version
-                        this.path = sampleFile.relativeTo(samplesDir).path
+                        this.path = sampleFile.relativeTo(samplesDir).pathString
                         this.collectionDate = LocalDate.now().toKotlinLocalDate()
                         this.submissionDate = sample.submissionDate
                     }
@@ -217,8 +218,8 @@ internal class CollectionService(
 
     private fun RawCollectedSample.hasValidFile(): Boolean {
         if (!executable.exists()) return false
-        if (!executable.isFile) return false
-        if (!executable.canRead()) return false
+        if (!executable.isRegularFile()) return false
+        if (!executable.isReadable()) return false
         return true
     }
 

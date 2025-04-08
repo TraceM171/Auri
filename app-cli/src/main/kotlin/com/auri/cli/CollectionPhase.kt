@@ -15,7 +15,7 @@ import com.github.ajalt.mordant.widgets.Text
 import com.github.ajalt.mordant.widgets.definitionList
 import kotlinx.coroutines.coroutineScope
 import kotlinx.datetime.Clock
-import java.io.File
+import java.nio.file.Path
 import kotlin.time.Duration.Companion.seconds
 
 class Collection : SuspendingCliktCommand(name = "collection") {
@@ -25,8 +25,8 @@ class Collection : SuspendingCliktCommand(name = "collection") {
 
     override fun help(context: Context): String = phaseDescription
 
-    private val baseDirectory: File by baseDirectory()
-    private val runbook: File by runbook()
+    private val baseDirectory: Path by baseDirectory()
+    private val runbook: Path by runbook()
     private val pruneCache: Boolean by pruneCache()
     private val verbosity: Int by verbosity()
 

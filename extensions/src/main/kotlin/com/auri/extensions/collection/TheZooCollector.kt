@@ -21,9 +21,10 @@ import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
-import java.io.File
 import java.net.URI
+import java.nio.file.Path
 import java.time.format.DateTimeFormatter
+import kotlin.io.path.*
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 
@@ -81,18 +82,18 @@ class TheZooCollector(
         }
 
         emit(Processing(what = "Query samples"))
-        val theZooDB = File(repoFolder, "conf/maldb.db").let(::sqliteConnection)
+        val theZooDB = repoFolder.resolve("conf/maldb.db").let(::sqliteConnection)
         val filteredSamples = theZooDB.getMalwareSamples()
 
         emit(Processing(what = "Extract samples"))
         val extractedSamples = filteredSamples.associateWith { sample ->
-            val sampleDir = File(repoFolder, sample.location)
+            val sampleDir = repoFolder.resolve(sample.location)
             if (!sampleDir.exists()) {
                 Logger.e { "Sample directory ${sampleDir.name} does not exist" }
                 return@associateWith null
             }
             extractSample(sampleDir)
-        }.mapValuesNotNull { it.value?.takeUnless(List<File>::isEmpty) }
+        }.mapValuesNotNull { it.value?.takeUnless(List<Path>::isEmpty) }
 
         val rawSamples = extractedSamples.flatMap { (sample, files) ->
             files.map {
@@ -122,16 +123,16 @@ class TheZooCollector(
     }
 
     private fun extractSample(
-        sampleDir: File,
-    ): List<File> {
+        sampleDir: Path,
+    ): List<Path> {
         Logger.d { "Extracting sample ${sampleDir.name}" }
 
-        val passFile = sampleDir.listFiles { _, name -> name.endsWith(".pass") }?.firstOrNull() ?: run {
+        val passFile = sampleDir.listDirectoryEntries().firstOrNull { it.name.endsWith(".pass") } ?: run {
             Logger.d { "No password file found for sample ${sampleDir.name}" }
             return emptyList()
         }
         val pass = passFile.readText().trim()
-        val zipFile = sampleDir.listFiles { _, name -> name.endsWith(".zip") }?.firstOrNull() ?: run {
+        val zipFile = sampleDir.listDirectoryEntries().firstOrNull { it.name.endsWith(".zip") }?.firstOrNull() ?: run {
             Logger.d { "No zip file found for sample ${sampleDir.name}" }
             return emptyList()
         }
@@ -139,7 +140,7 @@ class TheZooCollector(
         zipFile.unzip(destinationDirectory = sampleDir, password = pass)
         Logger.d { "Successfully extracted ${zipFile.name}" }
         Logger.d { "Searching for extracted executable" }
-        val executables = sampleDir.walkTopDown()
+        val executables = sampleDir.walk()
             .filter { file -> file.magicNumber() in this@TheZooCollector.definition.samplesMagicNumberFilter }
             .toList()
         if (executables.isEmpty())

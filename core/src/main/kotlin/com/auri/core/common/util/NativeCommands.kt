@@ -8,15 +8,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.withContext
-import java.io.File
+import java.nio.file.Path
 
 suspend fun runNativeCommand(
-    workingDir: File? = null,
+    workingDir: Path? = null,
     vararg command: String
 ): Either<String, String> = withContext(Dispatchers.IO) {
     val process = runCatching {
         ProcessBuilder(*command).apply {
-            directory(workingDir)
+            directory(workingDir?.toFile())
         }.start()
     }.getOrElse {
         Logger.d(it) { "Error running command: ${command.joinToString(" ")}" }

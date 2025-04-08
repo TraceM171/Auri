@@ -28,15 +28,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
-import kotlinx.io.files.Path
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
-import java.io.File
+import java.nio.file.Path
+import kotlin.io.path.*
 
 suspend fun CoroutineScope.launchSampleCollection(
-    baseDirectory: File,
-    runbook: File,
+    baseDirectory: Path,
+    runbook: Path,
     minLogSeverity: Severity,
     pruneCache: Boolean
 ): Flow<CollectionProcessStatus> {
@@ -93,8 +93,8 @@ suspend fun CoroutineScope.launchSampleCollection(
 }
 
 suspend fun CoroutineScope.launchSampleAnalysis(
-    baseDirectory: File,
-    runbook: File,
+    baseDirectory: Path,
+    runbook: Path,
     minLogSeverity: Severity,
     pruneCache: Boolean,
     streamed: Boolean
@@ -129,7 +129,7 @@ suspend fun CoroutineScope.launchSampleAnalysis(
 
     val analysisService = AnalysisService(
         cacheDir = initContext.cacheDir,
-        samplesDir = initContext.samplesDir.toPath(),
+        samplesDir = initContext.samplesDir,
         auriDB = initContext.auriDB,
         sampleExecutionPath = phaseConfig.sampleExecutionPath,
         vmManager = phaseConfig.vmManager,
@@ -158,17 +158,18 @@ suspend fun CoroutineScope.launchSampleAnalysis(
 }
 
 
+@OptIn(ExperimentalPathApi::class)
 private suspend fun init(
-    baseDirectory: File,
-    runbook: File,
+    baseDirectory: Path,
+    runbook: Path,
     minLogSeverity: Severity,
     pruneCache: Boolean
 ) = either<InitError, InitContext> {
-    val cacheDir = File(baseDirectory, "cache/collection")
-    val samplesDir = File(baseDirectory, "samples")
-    val extensionsDir = File(baseDirectory, "extensions")
-    val logsFile = File(baseDirectory, "auri")
-    val auriDB = File(baseDirectory, "auri.db").let(::sqliteConnection)
+    val cacheDir = baseDirectory.resolve("cache/collection")
+    val samplesDir = baseDirectory.resolve("samples")
+    val extensionsDir = baseDirectory.resolve("extensions")
+    val logsFile = baseDirectory.resolve("auri")
+    val auriDB = baseDirectory.resolve("auri.db").let(::sqliteConnection)
 
     Logger.run {
         setMinSeverity(minLogSeverity)
@@ -176,7 +177,7 @@ private suspend fun init(
             RollingFileLogWriter(
                 config = RollingFileLogWriterConfig(
                     logFileName = logsFile.name,
-                    logFilePath = Path(logsFile.parent),
+                    logFilePath = kotlinx.io.files.Path(logsFile.parent.pathString),
                 ),
                 messageStringFormatter = DefaultMessageFormatter("com.auri")
             )
@@ -193,10 +194,10 @@ private suspend fun init(
         cacheDir.deleteRecursively()
     }
 
-    baseDirectory.mkdirs()
-    cacheDir.mkdirs()
-    samplesDir.mkdirs()
-    extensionsDir.mkdirs()
+    baseDirectory.createDirectories()
+    cacheDir.createDirectories()
+    samplesDir.createDirectories()
+    extensionsDir.createDirectories()
     newSuspendedTransaction(context = Dispatchers.IO, db = auriDB) {
         SchemaUtils.create(
             RawSampleTable,
@@ -215,8 +216,8 @@ private suspend fun init(
 }
 
 private data class InitContext(
-    val cacheDir: File,
-    val samplesDir: File,
+    val cacheDir: Path,
+    val samplesDir: Path,
     val auriDB: Database,
     val mainConfig: MainConf,
     val classLoader: ClassLoader

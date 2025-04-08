@@ -2,8 +2,9 @@ package com.auri.core.common.util
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
+import java.nio.file.Path
 import java.security.MessageDigest
+import kotlin.io.path.inputStream
 
 enum class HashAlgorithms(val id: String) {
     MD5("MD5"),
@@ -12,7 +13,7 @@ enum class HashAlgorithms(val id: String) {
 }
 
 @OptIn(ExperimentalStdlibApi::class)
-suspend fun File.hashes(
+suspend fun Path.hashes(
     vararg algorithms: HashAlgorithms = arrayOf(HashAlgorithms.MD5, HashAlgorithms.SHA1, HashAlgorithms.SHA256)
 ): Map<HashAlgorithms, String> = withContext(Dispatchers.IO) {
     val digestions = algorithms.associateWith { MessageDigest.getInstance(it.id) }

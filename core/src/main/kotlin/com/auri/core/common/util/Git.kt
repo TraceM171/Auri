@@ -2,8 +2,11 @@ package com.auri.core.common.util
 
 import arrow.core.raise.either
 import co.touchlab.kermit.Logger
-import java.io.File
 import java.net.URL
+import java.nio.file.Path
+import kotlin.io.path.Path
+import kotlin.io.path.absolutePathString
+import kotlin.io.path.createDirectories
 
 data class GitRepo(
     val url: URL,
@@ -12,13 +15,12 @@ data class GitRepo(
 )
 
 suspend fun cloneRepo(
-    workingDirectory: File,
+    workingDirectory: Path,
     gitRepo: GitRepo
 ) = either {
-    val repoFolder = File(
-        workingDirectory,
+    val repoFolder = workingDirectory.resolve(
         gitRepo.url.path.substringAfterLast("/").substringBeforeLast(".")
-    ).apply { mkdirs() }
+    ).apply { createDirectories() }
     val repoRoot = runNativeCommand(
         workingDir = repoFolder,
         "git",
@@ -27,7 +29,7 @@ suspend fun cloneRepo(
     ).onLeft {
         Logger.e { "Failed to get repository root: $it" }
     }.bind()
-    val existsRepo = File(repoRoot) == repoFolder
+    val existsRepo = Path(repoRoot) == repoFolder
 
     if (existsRepo) { // Repository already exists
         Logger.d { "Repository already exists, checking if updated" }
@@ -81,7 +83,7 @@ suspend fun cloneRepo(
         "git",
         "clone",
         gitRepo.url.toString(),
-        repoFolder.absolutePath,
+        repoFolder.absolutePathString(),
         "--branch",
         gitRepo.branch,
         "--single-branch",

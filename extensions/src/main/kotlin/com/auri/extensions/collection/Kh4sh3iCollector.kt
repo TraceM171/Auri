@@ -12,8 +12,12 @@ import com.auri.core.common.util.*
 import com.auri.extensions.collection.common.periodicCollection
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
-import java.io.File
 import java.net.URI
+import java.nio.file.Path
+import kotlin.io.path.isDirectory
+import kotlin.io.path.listDirectoryEntries
+import kotlin.io.path.name
+import kotlin.io.path.walk
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 
@@ -69,17 +73,17 @@ class Kh4sh3iCollector(
         }
 
         emit(Processing(what = "Extract samples"))
-        val extractedSamples = repoFolder.listFiles()!!
-            .filter { it.isDirectory }
+        val extractedSamples = repoFolder.listDirectoryEntries()
+            .filter { it.isDirectory() }
             .filterNot { it.name.startsWith(".") }
             .associateWith { sampleDir ->
-                val sampleZip = sampleDir.listFiles { _, name -> name.endsWith(".zip") }?.firstOrNull()
+                val sampleZip = sampleDir.listDirectoryEntries().firstOrNull { it.name.endsWith(".zip") }
                 if (sampleZip == null) {
                     Logger.e { "No zip file found for sample ${sampleDir.name}" }
                     return@associateWith null
                 }
                 extractSample(sampleDir)
-            }.mapValuesNotNull { it.value?.takeUnless(List<File>::isEmpty) }
+            }.mapValuesNotNull { it.value?.takeUnless(List<Path>::isEmpty) }
 
         val rawSamples = extractedSamples.mapNotNull { (sample, files) ->
             files.map {
@@ -97,11 +101,11 @@ class Kh4sh3iCollector(
     }
 
     private fun extractSample(
-        sampleDir: File,
-    ): List<File> {
+        sampleDir: Path,
+    ): List<Path> {
         Logger.d { "Extracting sample ${sampleDir.name}" }
 
-        val zipFile = sampleDir.listFiles { _, name -> name.endsWith(".zip") }?.firstOrNull() ?: run {
+        val zipFile = sampleDir.listDirectoryEntries().firstOrNull { it.name.endsWith(".zip") } ?: run {
             Logger.d { "No zip file found for sample ${sampleDir.name}" }
             return emptyList()
         }
@@ -109,7 +113,7 @@ class Kh4sh3iCollector(
         zipFile.unzip(destinationDirectory = sampleDir, password = definition.samplesPassword)
         Logger.d { "Successfully extracted ${zipFile.name}" }
         Logger.d { "Searching for extracted executable" }
-        val executables = sampleDir.walkTopDown()
+        val executables = sampleDir.walk()
             .filter { file -> file.magicNumber() in definition.samplesMagicNumberFilter }
             .toList()
         if (executables.isEmpty())

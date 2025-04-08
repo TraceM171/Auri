@@ -1,10 +1,11 @@
 package com.auri.core.common.util
 
 import net.lingala.zip4j.ZipFile
-import java.io.File
+import java.nio.file.Path
+import kotlin.io.path.absolutePathString
 
-fun File.unzip(
-    destinationDirectory: File,
+fun Path.unzip(
+    destinationDirectory: Path,
     password: String? = null,
-) = ZipFile(this, password?.toCharArray())
-    .extractAll(destinationDirectory.absolutePath)
+) = ZipFile(this.toFile(), password?.toCharArray())
+    .extractAll(destinationDirectory.absolutePathString())

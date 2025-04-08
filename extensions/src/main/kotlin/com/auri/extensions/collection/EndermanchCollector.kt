@@ -11,8 +11,9 @@ import com.auri.core.common.util.*
 import com.auri.extensions.collection.common.periodicCollection
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
-import java.io.File
 import java.net.URI
+import java.nio.file.Path
+import kotlin.io.path.*
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 
@@ -69,12 +70,12 @@ class EndermanchCollector(
         }
 
         emit(Processing(what = "Extract samples"))
-        val extractedSamples = repoFolder.listFiles()!!
+        val extractedSamples = repoFolder.listDirectoryEntries()
             .asSequence()
-            .filter { it.isDirectory }
+            .filter { it.isDirectory() }
             .filterNot { it.name.startsWith(".") }
             .filter { it.name in definition.samplesFolderFilter }
-            .flatMap { it.listFiles { _, name -> name.endsWith(".zip") }?.toList().orEmpty() }
+            .flatMap { it.listDirectoryEntries().filter { it.name.endsWith(".zip") }.toList().orEmpty() }
             .associateWith {
                 extractSamples(it)
             }
@@ -95,14 +96,14 @@ class EndermanchCollector(
     }
 
     private fun extractSamples(
-        zipFile: File,
-    ): List<File> {
+        zipFile: Path,
+    ): List<Path> {
         Logger.d { "Extracting ${zipFile.nameWithoutExtension} with password ${definition.samplesPassword}" }
-        val destinationDir = File(zipFile.parent, zipFile.nameWithoutExtension)
+        val destinationDir = zipFile.parent.resolve(zipFile.nameWithoutExtension)
         zipFile.unzip(destinationDirectory = destinationDir, password = definition.samplesPassword)
         Logger.d { "Successfully extracted ${zipFile.name}" }
         Logger.d { "Searching for extracted executables" }
-        val executables = destinationDir.walkTopDown()
+        val executables = destinationDir.walk()
             .filter { file -> file.magicNumber() in definition.samplesMagicNumberFilter }
             .toList()
         if (executables.isEmpty())

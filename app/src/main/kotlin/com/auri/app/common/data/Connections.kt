@@ -1,11 +1,12 @@
 package com.auri.app.common.data
 
 import org.jetbrains.exposed.sql.Database
-import java.io.File
+import java.nio.file.Path
+import kotlin.io.path.absolutePathString
 
 internal fun sqliteConnection(
-    file: File
+    file: Path
 ) = Database.connect(
-    url = "jdbc:sqlite:${file.absolutePath}",
+    url = "jdbc:sqlite:${file.absolutePathString()}",
     driver = "org.sqlite.JDBC"
 )

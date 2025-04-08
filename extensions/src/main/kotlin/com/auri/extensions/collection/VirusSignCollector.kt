@@ -29,9 +29,10 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.toKotlinLocalDate
-import java.io.File
 import java.net.URI
 import java.net.URL
+import java.nio.file.Path
+import kotlin.io.path.*
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 
@@ -95,14 +96,15 @@ class VirusSignCollector(
         }
         emit(Processing(what = "Already downloaded samples"))
         val alreadyDownloadedSamples = collectionParameters.workingDirectory
-            .listFiles { _, name -> name.endsWith(".zip") }
+            .listDirectoryEntries()
+            .filter { it.name.endsWith(".zip") }
             .map { it.name }
             .toSet()
         Logger.i { "Found ${alreadyDownloadedSamples.size} already downloaded samples" }
-        val newSamples = samplesLinks.filter { File(it.url.path).name !in alreadyDownloadedSamples }
+        val newSamples = samplesLinks.filter { Path(it.url.path).name !in alreadyDownloadedSamples }
         Logger.i { "Found ${newSamples.size} new samples" }
         samplesLinks.mapNotNull { sampleLink ->
-            val destination = File(collectionParameters.workingDirectory, File(sampleLink.url.path).name)
+            val destination = collectionParameters.workingDirectory.resolve(Path(sampleLink.url.path).name)
             emit(Processing(what = "Sample ${destination.nameWithoutExtension}"))
             if (sampleLink in newSamples) {
                 emit(Downloading(what = "Sample ${destination.nameWithoutExtension}"))
@@ -124,16 +126,16 @@ class VirusSignCollector(
     }
 
     private fun extractSamples(
-        zipFile: File
-    ): List<File> {
-        val destinationDir = File(zipFile.parent, zipFile.nameWithoutExtension)
+        zipFile: Path
+    ): List<Path> {
+        val destinationDir = zipFile.parent.resolve(zipFile.nameWithoutExtension)
         if (!destinationDir.exists()) {
             Logger.d { "Extracting ${zipFile.nameWithoutExtension} with password ${definition.samplesPassword}" }
             zipFile.unzip(destinationDirectory = destinationDir, password = definition.samplesPassword)
             Logger.d { "Successfully extracted ${zipFile.name}" }
         }
         Logger.d { "Searching for extracted executables" }
-        val executables = destinationDir.walkTopDown()
+        val executables = destinationDir.walk()
             .filter { file -> file.magicNumber() in definition.samplesMagicNumberFilter }
             .toList()
         if (executables.isEmpty())
@@ -188,9 +190,9 @@ class VirusSignCollector(
 
         suspend fun downloadSample(
             sampleLink: SampleLink,
-            destination: File
+            destination: Path
         ): Either<String, Unit> = either {
-            destination.parentFile.mkdirs()
+            destination.parent.createDirectories()
             val response = client.get(sampleLink.url.toString())
             ensure(response.status.isSuccess()) {
                 "Failed to download sample: ${response.status}"

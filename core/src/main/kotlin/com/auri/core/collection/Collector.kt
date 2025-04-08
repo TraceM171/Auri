@@ -4,7 +4,7 @@ import com.auri.core.common.ExtensionPoint
 import com.auri.core.common.HasDependencies
 import com.auri.core.common.MissingDependency
 import kotlinx.coroutines.flow.Flow
-import java.io.File
+import java.nio.file.Path
 
 /**
  * Interface for a collector.
@@ -49,6 +49,6 @@ interface Collector : HasDependencies {
          *
          * Any files that are created during the collection will be created in this directory.
          */
-        val workingDirectory: File,
+        val workingDirectory: Path,
     )
 }

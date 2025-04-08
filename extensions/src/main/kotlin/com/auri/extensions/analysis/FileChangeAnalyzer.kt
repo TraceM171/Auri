@@ -23,7 +23,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.BufferedReader
-import java.io.File
+import java.nio.file.Path
 
 class FileChangeAnalyzer(
     private val definition: Definition
@@ -54,14 +54,14 @@ class FileChangeAnalyzer(
     private var initialState: Map<VMFilePath, Set<FileFeatureState>> = mapOf()
 
     override suspend fun captureInitialState(
-        workingDirectory: File,
+        workingDirectory: Path,
         interaction: VMInteraction
     ): Either<Unit, Unit> = either {
         initialState = getCurrentState(interaction).bind()
     }
 
     override suspend fun reportChanges(
-        workingDirectory: File,
+        workingDirectory: Path,
         interaction: VMInteraction
     ): Either<Unit, ChangeReport> = either {
         val currentState = getCurrentState(interaction).getOrElse {

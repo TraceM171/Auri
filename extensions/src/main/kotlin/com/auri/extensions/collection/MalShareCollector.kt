@@ -30,10 +30,11 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.io.File
 import java.net.URI
 import java.net.URL
+import java.nio.file.Path
 import java.time.LocalDate
+import kotlin.io.path.*
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 
@@ -88,7 +89,7 @@ class MalShareCollector(
         Logger.i { "Found ${samplesHashes.size} sample hashes" }
         emit(Processing(what = "Already downloaded samples"))
         val alreadyDownloadedSamples = collectionParameters.workingDirectory
-            .listFiles()
+            .listDirectoryEntries()
             .map { it.name }
             .toSet()
         Logger.i { "Found ${alreadyDownloadedSamples.size} already downloaded samples" }
@@ -96,7 +97,7 @@ class MalShareCollector(
         Logger.i { "Found ${newSamples.size} new samples" }
         samplesHashes.forEach { sampleHashes ->
             emit(Processing(what = "Sample ${sampleHashes.sha1}"))
-            val destination = File(collectionParameters.workingDirectory, sampleHashes.sha1)
+            val destination = collectionParameters.workingDirectory.resolve(sampleHashes.sha1)
             if (sampleHashes in newSamples) {
                 emit(Downloading(what = "Sample ${sampleHashes.sha1}"))
                 api.downloadSample(sampleHashes, destination).getOrElse {
@@ -161,9 +162,9 @@ class MalShareCollector(
 
         suspend fun downloadSample(
             sampleLink: SampleLink,
-            destination: File
+            destination: Path
         ): Either<String, Unit> = either {
-            destination.parentFile.mkdirs()
+            destination.parent.createDirectories()
             val response = client.get {
                 parameter("action", "getfile")
                 parameter("hash", sampleLink.sha1)
