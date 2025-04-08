@@ -11,7 +11,6 @@ import com.github.ajalt.mordant.rendering.Whitespace
 import com.github.ajalt.mordant.table.VerticalLayoutBuilder
 import com.github.ajalt.mordant.table.grid
 import com.github.ajalt.mordant.table.horizontalLayout
-import com.github.ajalt.mordant.widgets.ProgressBar
 import com.github.ajalt.mordant.widgets.Text
 import com.github.ajalt.mordant.widgets.definitionList
 import kotlinx.coroutines.coroutineScope
@@ -105,7 +104,7 @@ private fun VerticalLayoutBuilder.tui(
                 )
             )
             processStatus.runningNow?.let { runningNow ->
-                val (subStepIndex, subStepName) = when (val runningNowStep = runningNow.step) {
+                val (_, subStepName) = when (val runningNowStep = runningNow.step) {
                     AnalysisProcessStatus.Analyzing.RunningNow.Step.StartingVM ->
                         1 to "Starting VM"
 
@@ -127,9 +126,10 @@ private fun VerticalLayoutBuilder.tui(
                 cell("")
                 cell(
                     horizontalLayout {
-                        cell(Text("Sample ${runningNow.sampleId}", whitespace = Whitespace.NORMAL))
-                        cell("  ")
-                        cell(ProgressBar(completed = subStepIndex.toLong(), total = 6L, width = 10))
+                        cell(Text("Sample ${runningNow.sampleId}", whitespace = Whitespace.NORMAL)) {
+                            style(italic = true)
+                        }
+                        cell(" - ")
                         cell(Text(subStepName, whitespace = Whitespace.NORMAL))
                     }
                 )
@@ -219,27 +219,6 @@ private fun VerticalLayoutBuilder.analysisStatsTui(analysisStats: AnalysisProces
                     else -> it
                 }
             }
-    /*cell(
-        Text(
-            "Alive samples: ${analysisStats.samplesStatus.count { it.value }} ($alivePercent% of analyzed samples)",
-            whitespace = Whitespace.NORMAL
-        )
-    )*/
-    val analyzedPercent = (analysisStats.totalSamplesAnalyzed.toFloat() / analysisStats.totalSamples * 100)
-        .let {
-            when {
-                it.isNaN() -> 0f
-                it.isInfinite() && it > 0 -> 100f
-                it.isInfinite() && it < 0 -> 0f
-                else -> it
-            }
-        }
-    /*cell(
-        Text(
-            "Analyzed samples: ${analysisStats.totalSamplesAnalyzed} ($analyzedPercent% of collected samples)",
-            whitespace = Whitespace.NORMAL
-        )
-    )*/
     cell(
         grid {
             row {
@@ -248,7 +227,7 @@ private fun VerticalLayoutBuilder.analysisStatsTui(analysisStats: AnalysisProces
             }
             row {
                 cell(Text("Analyzed samples"))
-                cell(Text("${analysisStats.totalSamplesAnalyzed} (${"%.2f".format(analyzedPercent)}% of samples left)"))
+                cell(Text("${analysisStats.totalSamplesAnalyzed} (${analysisStats.totalSamples} samples left)"))
             }
         }
     )
