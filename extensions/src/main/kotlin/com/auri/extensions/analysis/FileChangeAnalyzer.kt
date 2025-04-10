@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.selects.select
 import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.BufferedReader
@@ -67,11 +68,11 @@ class FileChangeAnalyzer(
         val currentState = getCurrentState(interaction).getOrElse {
             return@either ChangeReport.AccessLost
         }
-        val changesFound = currentState.map { (path, currentFeatures) ->
-            val initialFeatures = initialState[path] ?: emptySet()
-            currentFeatures.map { currentFeature ->
-                val initialFeature = initialFeatures.find { it::class == currentFeature::class }
-                val hasChanged = initialFeature != currentFeature
+        val changesFound = initialState.map { (path, initialFeatures) ->
+            val currentFeatures = currentState[path] ?: emptySet()
+            initialFeatures.map { initialFeature ->
+                val currentFeature = currentFeatures.find { it::class == initialFeature::class }
+                val hasChanged = currentFeature != initialFeature
                 if (hasChanged) {
                     Logger.d { "Change detected in $path: before $initialFeature, after $currentFeature" }
                 }
@@ -96,13 +97,15 @@ class FileChangeAnalyzer(
                     }.firstOrNull()
                 }.onAwait { Unit.left() }
                 async(job) {
-                    definition.files.associateWith { path ->
+                    definition.files.map { path ->
                         command.commandInput.send("${path.value}\n")
                         command.commandOutput.receive().let(::parseScriptResult)
                             .getOrElse {
                                 Logger.e { "Failed to parse script result" }
                                 error("Failed to parse script result")
                             }
+                    }.reduce { acc, it ->
+                        acc + it
                     }
                 }.onAwait {
                     it.right()
@@ -115,12 +118,11 @@ class FileChangeAnalyzer(
 
     private fun parseScriptResult(scriptResult: String) = either {
         val resultJson = catch(
-            { Json.parseToJsonElement(scriptResult).jsonObject },
+            { Json.parseToJsonElement(scriptResult).jsonArray.map { it.jsonObject } },
             { raise(Unit) }
         )
-        buildSet<FileFeatureState> {
-            resultJson
-                .getOrElse("Exists") { raise(Unit) }
+        resultJson.associate { jsonObject ->
+            val path = jsonObject.getOrElse("FilePath") { raise(Unit) }
                 .run {
                     catch(
                         { jsonPrimitive },
@@ -128,91 +130,103 @@ class FileChangeAnalyzer(
                     )
                 }.jsonPrimitive
                 .content
-                .toBoolean()
-                .let { FileFeatureState.ExistenceState(it) }
-                .takeIf { FileFeature.Existence in definition.featuresToTrack }
-                ?.also(::add)
-                ?.also {
-                    if (!it.exists) return@buildSet
-                }
-            resultJson
-                .getOrElse("Size") { raise(Unit) }
-                .run {
-                    catch(
-                        { jsonPrimitive },
-                        { raise(Unit) }
-                    )
-                }.jsonPrimitive
-                .content
-                .toLong()
-                .let { FileFeatureState.SizeState(it) }
-                .takeIf { FileFeature.Size in definition.featuresToTrack }
-                ?.also(::add)
-            resultJson
-                .getOrElse("CreationTime") { raise(Unit) }
-                .run {
-                    catch(
-                        { jsonPrimitive },
-                        { raise(Unit) }
-                    )
-                }.jsonPrimitive
-                .content
-                .let { Instant.parse(it) }
-                .let { FileFeatureState.CreatedState(it) }
-                .takeIf { FileFeature.Created in definition.featuresToTrack }
-                ?.also(::add)
-            resultJson
-                .getOrElse("LastModified") { raise(Unit) }
-                .run {
-                    catch(
-                        { jsonPrimitive },
-                        { raise(Unit) }
-                    )
-                }.jsonPrimitive
-                .content
-                .let { Instant.parse(it) }
-                .let { FileFeatureState.LastModifiedState(it) }
-                .takeIf { FileFeature.LastModified in definition.featuresToTrack }
-                ?.also(::add)
-            resultJson
-                .getOrElse("LastAccessTime") { raise(Unit) }
-                .run {
-                    catch(
-                        { jsonPrimitive },
-                        { raise(Unit) }
-                    )
-                }.jsonPrimitive
-                .content
-                .let { Instant.parse(it) }
-                .let { FileFeatureState.LastAccessedState(it) }
-                .takeIf { FileFeature.LastAccessed in definition.featuresToTrack }
-                ?.also(::add)
-            resultJson
-                .getOrElse("Attributes") { raise(Unit) }
-                .run {
-                    catch(
-                        { jsonPrimitive },
-                        { raise(Unit) }
-                    )
-                }.jsonPrimitive
-                .content
-                .split(',')
-                .toSet()
-                .let { FileFeatureState.AttributesState(it) }
-                .takeIf { FileFeature.Attributes in definition.featuresToTrack }
-                ?.also(::add)
-            resultJson
-                .getOrElse("Hash") { raise(Unit) }
-                .run {
-                    catch(
-                        { jsonPrimitive },
-                        { raise(Unit) }
-                    )
-                }.jsonPrimitive
-                .content
-                .let { FileFeatureState.HashState(it) }
-                .takeIf { FileFeature.Hash in definition.featuresToTrack }
-                ?.also(::add)
+                .let(::VMFilePath)
+            path to buildSet<FileFeatureState> {
+                jsonObject
+                    .getOrElse("Exists") { raise(Unit) }
+                    .run {
+                        catch(
+                            { jsonPrimitive },
+                            { raise(Unit) }
+                        )
+                    }.jsonPrimitive
+                    .content
+                    .toBoolean()
+                    .let { FileFeatureState.ExistenceState(it) }
+                    .takeIf { FileFeature.Existence in definition.featuresToTrack }
+                    ?.also(::add)
+                    ?.also {
+                        if (!it.exists) return@buildSet
+                    }
+                jsonObject
+                    .getOrElse("Size") { raise(Unit) }
+                    .run {
+                        catch(
+                            { jsonPrimitive },
+                            { raise(Unit) }
+                        )
+                    }.jsonPrimitive
+                    .content
+                    .toLong()
+                    .let { FileFeatureState.SizeState(it) }
+                    .takeIf { FileFeature.Size in definition.featuresToTrack }
+                    ?.also(::add)
+                jsonObject
+                    .getOrElse("CreationTime") { raise(Unit) }
+                    .run {
+                        catch(
+                            { jsonPrimitive },
+                            { raise(Unit) }
+                        )
+                    }.jsonPrimitive
+                    .content
+                    .let { Instant.parse(it) }
+                    .let { FileFeatureState.CreatedState(it) }
+                    .takeIf { FileFeature.Created in definition.featuresToTrack }
+                    ?.also(::add)
+                jsonObject
+                    .getOrElse("LastModified") { raise(Unit) }
+                    .run {
+                        catch(
+                            { jsonPrimitive },
+                            { raise(Unit) }
+                        )
+                    }.jsonPrimitive
+                    .content
+                    .let { Instant.parse(it) }
+                    .let { FileFeatureState.LastModifiedState(it) }
+                    .takeIf { FileFeature.LastModified in definition.featuresToTrack }
+                    ?.also(::add)
+                jsonObject
+                    .getOrElse("LastAccessTime") { raise(Unit) }
+                    .run {
+                        catch(
+                            { jsonPrimitive },
+                            { raise(Unit) }
+                        )
+                    }.jsonPrimitive
+                    .content
+                    .let { Instant.parse(it) }
+                    .let { FileFeatureState.LastAccessedState(it) }
+                    .takeIf { FileFeature.LastAccessed in definition.featuresToTrack }
+                    ?.also(::add)
+                jsonObject
+                    .getOrElse("Attributes") { raise(Unit) }
+                    .run {
+                        catch(
+                            { jsonPrimitive },
+                            { raise(Unit) }
+                        )
+                    }.jsonPrimitive
+                    .content
+                    .split(',')
+                    .toSet()
+                    .let { FileFeatureState.AttributesState(it) }
+                    .takeIf { FileFeature.Attributes in definition.featuresToTrack }
+                    ?.also(::add)
+                jsonObject
+                    .getOrElse("Hash") { raise(Unit) }
+                    .run {
+                        catch(
+                            { jsonPrimitive },
+                            { raise(Unit) }
+                        )
+                    }.jsonPrimitive
+                    .content
+                    .let { FileFeatureState.HashState(it) }
+                    .takeIf { FileFeature.Hash in definition.featuresToTrack }
+                    ?.also(::add)
+            }
         }
     }
 
