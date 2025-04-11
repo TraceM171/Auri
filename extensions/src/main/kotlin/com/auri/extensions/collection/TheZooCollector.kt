@@ -132,7 +132,7 @@ class TheZooCollector(
             return emptyList()
         }
         val pass = passFile.readText().trim()
-        val zipFile = sampleDir.listDirectoryEntries().firstOrNull { it.name.endsWith(".zip") }?.firstOrNull() ?: run {
+        val zipFile = sampleDir.listDirectoryEntries().firstOrNull { it.name.endsWith(".zip") } ?: run {
             Logger.d { "No zip file found for sample ${sampleDir.name}" }
             return emptyList()
         }
