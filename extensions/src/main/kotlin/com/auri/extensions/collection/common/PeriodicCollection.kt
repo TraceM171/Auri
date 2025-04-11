@@ -27,21 +27,39 @@ fun periodicCollection(
         return@flow
     }
 
+    var retryCount = 0
+
     periodicity.perform<Unit, Unit> {
         val lastStatus = safeCollectorFlow
             .map {
                 when (it) {
-                    is Failed -> Retrying(
-                        what = it.what,
-                        why = it.why,
-                        nextTryStart = Clock.System.now() + periodicity.retryEvery
-                    )
+                    is Failed -> {
+                        retryCount++
+                        if (retryCount > periodicity.maxRetriesPerPerform) {
+                            retryCount = 0
+                            Retrying(
+                                what = it.what,
+                                why = it.why,
+                                nextTryStart = Clock.System.now() + periodicity.performEvery
+                            )
+                        } else Retrying(
+                            what = it.what,
+                            why = it.why,
+                            nextTryStart = Clock.System.now() + periodicity.retryEvery
+                        )
+                    }
 
-                    is Done -> DoneUntilNextPeriod(
-                        nextPeriodStart = Clock.System.now() + periodicity.performEvery
-                    )
+                    is Done -> {
+                        retryCount = 0
+                        DoneUntilNextPeriod(
+                            nextPeriodStart = Clock.System.now() + periodicity.performEvery
+                        )
+                    }
 
-                    else -> it
+                    else -> {
+                        retryCount = 0
+                        it
+                    }
                 }
             }.transformWhile {
                 emit(it)
