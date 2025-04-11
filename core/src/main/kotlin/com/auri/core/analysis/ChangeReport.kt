@@ -1,7 +1,9 @@
 package com.auri.core.analysis
 
-sealed class ChangeReport(val changeFound: Boolean) {
-    data object NotChanged : ChangeReport(false)
-    data object AccessLost : ChangeReport(true)
-    data object Changed : ChangeReport(true)
+import arrow.core.Nel
+
+sealed interface ChangeReport {
+    data object NotChanged : ChangeReport
+    data object AccessLost : ChangeReport
+    data class Changed(val what: Nel<String>) : ChangeReport
 }

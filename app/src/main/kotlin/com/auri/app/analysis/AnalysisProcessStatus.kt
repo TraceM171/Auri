@@ -2,6 +2,7 @@ package com.auri.app.analysis
 
 import arrow.core.Nel
 import com.auri.core.analysis.Analyzer
+import com.auri.core.analysis.ChangeReport
 import com.auri.core.common.MissingDependency
 import kotlinx.datetime.Instant
 
@@ -48,8 +49,13 @@ sealed interface AnalysisProcessStatus {
 
 
     data class AnalysisStats(
-        val samplesStatus: Map<Int, Boolean>,
+        val samplesStatus: Map<Int, ExtendedChangeReport>,
         val totalSamplesAnalyzed: Int,
         val totalSamples: Int
+    )
+
+    data class ExtendedChangeReport(
+        val changeFound: Boolean,
+        val changeReport: ChangeReport
     )
 }

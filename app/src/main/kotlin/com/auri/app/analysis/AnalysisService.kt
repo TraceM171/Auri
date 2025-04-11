@@ -14,6 +14,7 @@ import com.auri.app.common.data.entity.SampleLivenessCheckEntity
 import com.auri.app.common.data.entity.SampleLivenessCheckTable
 import com.auri.app.common.data.getAsFlow
 import com.auri.core.analysis.Analyzer
+import com.auri.core.analysis.ChangeReport
 import com.auri.core.analysis.VMInteraction
 import com.auri.core.analysis.VMManager
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,7 @@ import java.nio.file.Path
 import java.time.LocalDate
 import kotlin.io.path.inputStream
 import kotlin.time.Duration
+import kotlin.time.TimeSource
 
 internal class AnalysisService(
     private val cacheDir: Path,
@@ -40,6 +42,7 @@ internal class AnalysisService(
     private val vmManager: VMManager,
     private val vmInteraction: VMInteraction,
     private val analyzers: List<Analyzer>,
+    private val markAsChangedOnAccessLost: Boolean,
     private val markAsInactiveAfter: Duration,
     private val analyzeEvery: Duration,
     private val keepListening: KeepListening?
@@ -224,19 +227,22 @@ internal class AnalysisService(
                     )
                 )
             }
-            val changed = withTimeoutOrNull(markAsInactiveAfter) {
+            val detectionStart = TimeSource.Monotonic.markNow()
+            val changeReport = withTimeoutOrNull(markAsInactiveAfter) {
                 Schedule.spaced<Unit>(analyzeEvery).retryEither {
                     analyzers.forEach { analyzer ->
                         Logger.d { "Analyzing with ${analyzer.name}" }
-                        analyzer.reportChanges(cacheDir, vmInteraction).getOrNull().also {
+                        analyzer.reportChanges(cacheDir, vmInteraction).getOrNull().let {
                             Logger.d { "Analyzer ${analyzer.name} finished: $it" }
-                        }?.takeIf { it.changeFound }?.let { return@withTimeoutOrNull true }
+                            it?.extended
+                        }?.takeIf { it.changeFound }?.let { return@withTimeoutOrNull it }
                     }
                     Unit.left()
                 }
-                false
-            } == true
-            Logger.d { "Analysis for sample ${entity.name} finished, changes detected: $changed" }
+                null
+            } ?: ChangeReport.NotChanged.extended
+            val detectionTime = detectionStart.elapsedNow()
+            Logger.d { "Analysis for sample ${entity.name} finished, changes detected: $changeReport" }
             _analysisStatus.update {
                 val analyzingOrNull = (it as? AnalysisProcessStatus.Analyzing ?: return@update it)
                 analyzingOrNull.copy(
@@ -249,8 +255,9 @@ internal class AnalysisService(
                 SampleLivenessCheckEntity.new {
                     this.sampleId = entity.id
                     this.checkDate = LocalDate.now().toKotlinLocalDate()
-                    this.isAlive = changed
-                    this.isAliveReason = "" // TODO: add reason
+                    this.timeToDetect = detectionTime
+                    this.isAlive = changeReport.changeFound
+                    this.isAliveReason = changeReport.changeReport.json
                 }
             }
             _analysisStatus.update {
@@ -278,7 +285,7 @@ internal class AnalysisService(
                     runningNow = null,
                     analysisStats = analyzingOrNull.analysisStats.copy(
                         samplesStatus = analyzingOrNull.analysisStats.samplesStatus + mapOf(
-                            entity.id.value to changed
+                            entity.id.value to changeReport
                         ),
                         totalSamplesAnalyzed = analyzingOrNull.analysisStats.totalSamplesAnalyzed + 1,
                         totalSamples = getTotalSamples()
@@ -299,4 +306,21 @@ internal class AnalysisService(
             )
         }
     }
+
+    private val ChangeReport.json
+        get() = when (this) {
+            is ChangeReport.NotChanged -> ""
+            is ChangeReport.Changed -> what.joinToString(separator = "\n")
+            is ChangeReport.AccessLost -> "Access lost"
+        }
+
+    private val ChangeReport.extended
+        get() = AnalysisProcessStatus.ExtendedChangeReport(
+            changeFound = when (this) {
+                is ChangeReport.NotChanged -> false
+                is ChangeReport.Changed -> true
+                is ChangeReport.AccessLost -> markAsChangedOnAccessLost
+            },
+            changeReport = this
+        )
 }

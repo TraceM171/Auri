@@ -15,6 +15,7 @@ internal data class AnalysisPhaseConfig(
     val vmManager: VMManager,
     val vmInteraction: VMInteraction,
     val analyzers: List<Analyzer>,
+    val markAsChangedOnAccessLost: Boolean = true,
     val markAsInactiveAfter: Duration = 5.minutes,
     val analyzeEvery: Duration = 15.seconds,
     val keepListening: KeepListening?

@@ -34,7 +34,6 @@ $input | ForEach-Object {
 
                 # Prepare the result with additional attributes
                 $result = @{
-                    Exists = $true
                     Size = $file.Length
                     LastModified = $file.LastWriteTimeUtc.ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
                     CreationTime = $file.CreationTimeUtc.ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
@@ -62,7 +61,6 @@ $input | ForEach-Object {
 
             # Prepare the result with additional attributes
             $result = @{
-                Exists = $true
                 Size = $file.Length
                 LastModified = $file.LastWriteTimeUtc.ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
                 CreationTime = $file.CreationTimeUtc.ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
@@ -79,15 +77,6 @@ $input | ForEach-Object {
     else
     {
         Write-DebugToFile "Path does not exist: $_"
-
-        # If path does not exist
-        $result = @{
-            Exists = $false
-            FilePath = $_
-        }
-
-        # Add the result to the results array
-        $results += $result
     }
 
     # Output all results as a single JSON array at the end

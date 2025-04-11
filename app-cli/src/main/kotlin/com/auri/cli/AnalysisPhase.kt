@@ -209,8 +209,9 @@ private fun VerticalLayoutBuilder.tui(
 }
 
 private fun VerticalLayoutBuilder.analysisStatsTui(analysisStats: AnalysisProcessStatus.AnalysisStats) {
+    val aliveSamples = analysisStats.samplesStatus.count { it.value.changeFound }
     val alivePercent =
-        (analysisStats.samplesStatus.count { it.value }.toFloat() / analysisStats.totalSamplesAnalyzed * 100)
+        (aliveSamples.toFloat() / analysisStats.totalSamplesAnalyzed * 100)
             .let {
                 when {
                     it.isNaN() -> 0f
@@ -223,7 +224,7 @@ private fun VerticalLayoutBuilder.analysisStatsTui(analysisStats: AnalysisProces
         grid {
             row {
                 cell(Text("Alive samples"))
-                cell(Text("${analysisStats.samplesStatus.count { it.value }} (${"%.2f".format(alivePercent)}% of analyzed samples)"))
+                cell(Text("$aliveSamples (${"%.2f".format(alivePercent)}% of analyzed samples)"))
             }
             row {
                 cell(Text("Analyzed samples"))

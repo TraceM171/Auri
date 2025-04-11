@@ -135,6 +135,7 @@ suspend fun CoroutineScope.launchSampleAnalysis(
         vmManager = phaseConfig.vmManager,
         vmInteraction = phaseConfig.vmInteraction,
         analyzers = phaseConfig.analyzers,
+        markAsChangedOnAccessLost = phaseConfig.markAsChangedOnAccessLost,
         markAsInactiveAfter = phaseConfig.markAsInactiveAfter,
         analyzeEvery = phaseConfig.analyzeEvery,
         keepListening = phaseConfig.keepListening.takeIf { streamed },

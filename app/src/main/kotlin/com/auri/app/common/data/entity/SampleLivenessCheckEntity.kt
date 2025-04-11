@@ -6,6 +6,7 @@ import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.ReferenceOption
 import org.jetbrains.exposed.sql.kotlin.datetime.date
+import org.jetbrains.exposed.sql.kotlin.datetime.duration
 
 internal object SampleLivenessCheckTable : IntIdTable() {
     val sampleId = reference(
@@ -15,6 +16,7 @@ internal object SampleLivenessCheckTable : IntIdTable() {
         onUpdate = ReferenceOption.CASCADE
     )
     val checkDate = date("check_date")
+    val timeToDetect = duration("time_to_detect")
     val isAlive = bool("is_alive")
     val isAliveReason = text("is_alive_reason")
 }
@@ -24,6 +26,7 @@ internal class SampleLivenessCheckEntity(id: EntityID<Int>) : IntEntity(id) {
 
     var sampleId by SampleLivenessCheckTable.sampleId
     var checkDate by SampleLivenessCheckTable.checkDate
+    var timeToDetect by SampleLivenessCheckTable.timeToDetect
     var isAlive by SampleLivenessCheckTable.isAlive
     var isAliveReason by SampleLivenessCheckTable.isAliveReason
 }

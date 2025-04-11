@@ -1,11 +1,8 @@
 package com.auri.extensions.analysis
 
-import arrow.core.Either
-import arrow.core.getOrElse
-import arrow.core.left
+import arrow.core.*
 import arrow.core.raise.catch
 import arrow.core.raise.either
-import arrow.core.right
 import co.touchlab.kermit.Logger
 import com.auri.core.analysis.Analyzer
 import com.auri.core.analysis.ChangeReport
@@ -37,7 +34,6 @@ class FileChangeAnalyzer(
         val customName: String = "File Changes",
         val files: List<VMFilePath>,
         val featuresToTrack: List<FileFeature> = listOf(
-            FileFeature.Existence,
             FileFeature.Size,
             FileFeature.Created,
             FileFeature.LastModified,
@@ -52,7 +48,7 @@ class FileChangeAnalyzer(
         }
     }
 
-    private var initialState: Map<VMFilePath, Set<FileFeatureState>> = mapOf()
+    private var initialState: Map<VMFilePath, FileState> = mapOf()
 
     override suspend fun captureInitialState(
         workingDirectory: Path,
@@ -68,18 +64,13 @@ class FileChangeAnalyzer(
         val currentState = getCurrentState(interaction).getOrElse {
             return@either ChangeReport.AccessLost
         }
-        val changesFound = initialState.map { (path, initialFeatures) ->
-            val currentFeatures = currentState[path] ?: emptySet()
-            initialFeatures.map { initialFeature ->
-                val currentFeature = currentFeatures.find { it::class == initialFeature::class }
-                val hasChanged = currentFeature != initialFeature
-                if (hasChanged) {
-                    Logger.d { "Change detected in $path: before $initialFeature, after $currentFeature" }
-                }
-                hasChanged
-            }.any { it }
-        }.any { it }
-        if (changesFound) ChangeReport.Changed else ChangeReport.NotChanged
+        val changesFound = initialState.flatMap { (path, initialFeatures) ->
+            run {
+                val currentFeatures = currentState[path] ?: return@flatMap listOf("File was deleted")
+                (currentFeatures differencesWith initialFeatures).orEmpty()
+            }.map { "($path) $it" }
+        }.toNonEmptyListOrNull() ?: return@either ChangeReport.NotChanged
+        ChangeReport.Changed(what = changesFound)
     }
 
     private suspend fun getCurrentState(interaction: VMInteraction) = either {
@@ -131,24 +122,8 @@ class FileChangeAnalyzer(
                 }.jsonPrimitive
                 .content
                 .let(::VMFilePath)
-            path to buildSet<FileFeatureState> {
-                jsonObject
-                    .getOrElse("Exists") { raise(Unit) }
-                    .run {
-                        catch(
-                            { jsonPrimitive },
-                            { raise(Unit) }
-                        )
-                    }.jsonPrimitive
-                    .content
-                    .toBoolean()
-                    .let { FileFeatureState.ExistenceState(it) }
-                    .takeIf { FileFeature.Existence in definition.featuresToTrack }
-                    ?.also(::add)
-                    ?.also {
-                        if (!it.exists) return@buildSet
-                    }
-                jsonObject
+            path to FileState(
+                size = jsonObject
                     .getOrElse("Size") { raise(Unit) }
                     .run {
                         catch(
@@ -159,9 +134,8 @@ class FileChangeAnalyzer(
                     .content
                     .toLong()
                     .let { FileFeatureState.SizeState(it) }
-                    .takeIf { FileFeature.Size in definition.featuresToTrack }
-                    ?.also(::add)
-                jsonObject
+                    .takeIf { FileFeature.Size in definition.featuresToTrack },
+                created = jsonObject
                     .getOrElse("CreationTime") { raise(Unit) }
                     .run {
                         catch(
@@ -172,9 +146,8 @@ class FileChangeAnalyzer(
                     .content
                     .let { Instant.parse(it) }
                     .let { FileFeatureState.CreatedState(it) }
-                    .takeIf { FileFeature.Created in definition.featuresToTrack }
-                    ?.also(::add)
-                jsonObject
+                    .takeIf { FileFeature.Created in definition.featuresToTrack },
+                lastModified = jsonObject
                     .getOrElse("LastModified") { raise(Unit) }
                     .run {
                         catch(
@@ -185,9 +158,8 @@ class FileChangeAnalyzer(
                     .content
                     .let { Instant.parse(it) }
                     .let { FileFeatureState.LastModifiedState(it) }
-                    .takeIf { FileFeature.LastModified in definition.featuresToTrack }
-                    ?.also(::add)
-                jsonObject
+                    .takeIf { FileFeature.LastModified in definition.featuresToTrack },
+                lastAccessed = jsonObject
                     .getOrElse("LastAccessTime") { raise(Unit) }
                     .run {
                         catch(
@@ -198,9 +170,8 @@ class FileChangeAnalyzer(
                     .content
                     .let { Instant.parse(it) }
                     .let { FileFeatureState.LastAccessedState(it) }
-                    .takeIf { FileFeature.LastAccessed in definition.featuresToTrack }
-                    ?.also(::add)
-                jsonObject
+                    .takeIf { FileFeature.LastAccessed in definition.featuresToTrack },
+                attributes = jsonObject
                     .getOrElse("Attributes") { raise(Unit) }
                     .run {
                         catch(
@@ -212,9 +183,8 @@ class FileChangeAnalyzer(
                     .split(',')
                     .toSet()
                     .let { FileFeatureState.AttributesState(it) }
-                    .takeIf { FileFeature.Attributes in definition.featuresToTrack }
-                    ?.also(::add)
-                jsonObject
+                    .takeIf { FileFeature.Attributes in definition.featuresToTrack },
+                hash = jsonObject
                     .getOrElse("Hash") { raise(Unit) }
                     .run {
                         catch(
@@ -225,8 +195,7 @@ class FileChangeAnalyzer(
                     .content
                     .let { FileFeatureState.HashState(it) }
                     .takeIf { FileFeature.Hash in definition.featuresToTrack }
-                    ?.also(::add)
-            }
+            )
         }
     }
 
@@ -234,7 +203,6 @@ class FileChangeAnalyzer(
     value class VMFilePath(val value: String)
 
     sealed interface FileFeature {
-        data object Existence : FileFeature
         data object Size : FileFeature
         data object Created : FileFeature
         data object LastModified : FileFeature
@@ -243,33 +211,83 @@ class FileChangeAnalyzer(
         data object Hash : FileFeature
     }
 
-    private interface FileFeatureState {
-        data class ExistenceState(
-            val exists: Boolean
-        ) : FileFeatureState
+    private interface FileFeatureState<T : FileFeatureState<T>> {
+        infix fun differenceWith(before: T): String?
 
         data class SizeState(
             val sizeBytes: Long
-        ) : FileFeatureState
+        ) : FileFeatureState<SizeState> {
+            override fun differenceWith(before: SizeState): String? = when {
+                sizeBytes > before.sizeBytes -> "File size increased by ${sizeBytes - before.sizeBytes} bytes"
+                sizeBytes < before.sizeBytes -> "File size decreased by ${before.sizeBytes - sizeBytes} bytes"
+                else -> null
+            }
+        }
 
         data class CreatedState(
             val created: Instant
-        ) : FileFeatureState
+        ) : FileFeatureState<CreatedState> {
+            override fun differenceWith(before: CreatedState): String? = when {
+                created > before.created -> "File was created ${created - before.created} after"
+                created < before.created -> "File was created ${before.created - created} before"
+                else -> null
+            }
+        }
 
         data class LastModifiedState(
             val lastModified: Instant
-        ) : FileFeatureState
+        ) : FileFeatureState<LastModifiedState> {
+            override fun differenceWith(before: LastModifiedState): String? = when {
+                lastModified > before.lastModified -> "File was modified ${lastModified - before.lastModified} after"
+                lastModified < before.lastModified -> "File was modified ${before.lastModified - lastModified} before"
+                else -> null
+            }
+        }
 
         data class LastAccessedState(
             val lastAccessed: Instant
-        ) : FileFeatureState
+        ) : FileFeatureState<LastAccessedState> {
+            override fun differenceWith(before: LastAccessedState): String? = when {
+                lastAccessed > before.lastAccessed -> "File was accessed ${lastAccessed - before.lastAccessed} after"
+                lastAccessed < before.lastAccessed -> "File was accessed ${before.lastAccessed - lastAccessed} before"
+                else -> null
+            }
+        }
 
         data class AttributesState(
             val attributes: Set<String>
-        ) : FileFeatureState
+        ) : FileFeatureState<AttributesState> {
+            override fun differenceWith(before: AttributesState): String? = when {
+                attributes != before.attributes -> "File attributes changed from ${before.attributes} to $attributes"
+                else -> null
+            }
+        }
 
         data class HashState(
             val hash: String
-        ) : FileFeatureState
+        ) : FileFeatureState<HashState> {
+            override fun differenceWith(before: HashState): String? = when {
+                hash != before.hash -> "File hash changed from ${before.hash} to $hash"
+                else -> null
+            }
+        }
+    }
+
+    private data class FileState(
+        val size: FileFeatureState.SizeState?,
+        val created: FileFeatureState.CreatedState?,
+        val lastModified: FileFeatureState.LastModifiedState?,
+        val lastAccessed: FileFeatureState.LastAccessedState?,
+        val attributes: FileFeatureState.AttributesState?,
+        val hash: FileFeatureState.HashState?
+    ) {
+        infix fun differencesWith(before: FileState): Nel<String>? = buildList {
+            before.size?.let(this@FileState.size!!::differenceWith)?.let(::add)
+            before.created?.let(created!!::differenceWith)?.let(::add)
+            before.lastModified?.let(lastModified!!::differenceWith)?.let(::add)
+            before.lastAccessed?.let(lastAccessed!!::differenceWith)?.let(::add)
+            before.attributes?.let(attributes!!::differenceWith)?.let(::add)
+            before.hash?.let(hash!!::differenceWith)?.let(::add)
+        }.toNonEmptyListOrNull()
     }
 }
