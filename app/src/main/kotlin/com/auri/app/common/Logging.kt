@@ -1,6 +1,7 @@
 package com.auri.app.common
 
 import co.touchlab.kermit.*
+import co.touchlab.kermit.io.RollingFileLogWriter
 import org.slf4j.ILoggerFactory
 import org.slf4j.Marker
 import org.slf4j.event.Level
@@ -80,7 +81,8 @@ class DefaultMessageFormatter(
 ) : MessageStringFormatter {
     private val excludedClasses = listOf(
         this::class.qualifiedName,
-        Slf4jKermitLogger::class.qualifiedName
+        Slf4jKermitLogger::class.qualifiedName,
+        RollingFileLogWriter::class.qualifiedName
     )
 
     override fun formatMessage(
