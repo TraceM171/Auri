@@ -9,9 +9,11 @@ import com.auri.core.analysis.ChangeReport
 import com.auri.core.analysis.VMInteraction
 import com.auri.core.common.util.ctx
 import com.auri.core.common.util.getResource
+import com.auri.core.common.util.messageWithCtx
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.selects.select
@@ -22,6 +24,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.BufferedReader
 import java.nio.file.Path
+import kotlin.time.Duration.Companion.seconds
 
 class FileChangeAnalyzer(
     private val definition: Definition
@@ -64,6 +67,7 @@ class FileChangeAnalyzer(
         interaction: VMInteraction
     ): Either<Throwable, ChangeReport> = either {
         val currentState = getCurrentState(interaction).getOrElse {
+            Logger.i { "Failed to get current state, marking as AccessLost: ${it.messageWithCtx}" }
             return@either ChangeReport.AccessLost
         }
         val changesFound = initialState.flatMap { (path, initialFeatures) ->
@@ -86,7 +90,8 @@ class FileChangeAnalyzer(
                 async(job) { command.run() }.onAwait(ScriptResult::RunEnded)
                 async(job) {
                     command.commandError.consumeAsFlow().firstOrNull()
-                }.onAwait { ScriptResult.ConsoleErrorReceived(it!!) }
+                        .also { if (it == null) delay(5.seconds) }
+                }.onAwait(ScriptResult::ConsoleErrorReceived)
                 async(job) {
                     definition.files.map { path ->
                         command.commandInput.send("${path.value}\n")
@@ -208,7 +213,7 @@ class FileChangeAnalyzer(
 
     private sealed interface ScriptResult {
         data class RunEnded(val result: Either<Throwable, Int>) : ScriptResult
-        data class ConsoleErrorReceived(val error: String) : ScriptResult
+        data class ConsoleErrorReceived(val error: String?) : ScriptResult
         data class AllFilesChecked(val data: Map<VMFilePath, FileState>) : ScriptResult
     }
 

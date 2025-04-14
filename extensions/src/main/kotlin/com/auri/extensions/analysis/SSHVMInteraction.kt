@@ -71,7 +71,7 @@ class SSHVMInteraction(
                         Logger.d { "Running command: $command" }
                         installF(
                             {},
-                            { commandInputChannel.cancel() }
+                            { commandInputChannel.close() }
                         )
                         installF(
                             {},
@@ -81,9 +81,7 @@ class SSHVMInteraction(
                             {},
                             { commandErrorChannel.close() }
                         )
-                        val session = init().onLeft {
-                            Logger.e { "Cavalry!" }
-                        }.bind()
+                        val session = init().bind()
 
                         val channel = installF(
                             {
