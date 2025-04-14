@@ -11,7 +11,7 @@ import com.auri.core.common.MissingDependency
  * A VMManager is a component that manages the lifecycle of a virtual machine.
  */
 @ExtensionPoint
-interface VMManager : HasDependencies {
+interface VMManager : HasDependencies, AutoCloseable {
     /**
      * The name of the VMManager. Must be unique for each VMManager.
      */
@@ -27,19 +27,23 @@ interface VMManager : HasDependencies {
      */
     val version: String
 
+
     /**
      * Launches the virtual machine.
      *
      * @return Either a left value if the VM could not be launched, or a right value if the VM was launched successfully.
      */
-    suspend fun launchVM(): Either<Unit, Unit>
+    suspend fun launchVM(): Either<Throwable, Unit>
 
     /**
      * Stops the virtual machine.
      *
      * @return Either a left value if the VM could not be stopped, or a right value if the VM was stopped successfully.
      */
-    suspend fun stopVM(): Either<Unit, Unit>
+    suspend fun stopVM(): Either<Throwable, Unit>
+
 
     override suspend fun checkDependencies(): List<MissingDependency> = emptyList()
+
+    override fun close() = Unit
 }

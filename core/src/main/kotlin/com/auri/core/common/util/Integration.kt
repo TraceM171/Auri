@@ -6,6 +6,10 @@ import arrow.fx.coroutines.AcquireStep
 import arrow.fx.coroutines.ResourceScope
 import co.touchlab.kermit.Logger
 
+@Deprecated(
+    "Deprecated in favour of com.auri.core.common.util.catching",
+    ReplaceWith("catching", "com.auri.core.common.util.catching")
+)
 inline fun <T> Raise<Unit>.catchLog(
     errorToLog: String,
     block: () -> T

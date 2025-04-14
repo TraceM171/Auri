@@ -9,9 +9,8 @@ import arrow.resilience.Schedule
 import arrow.resilience.retryRaise
 import co.touchlab.kermit.Logger
 import com.auri.core.analysis.VMManager
-import com.auri.core.common.catching
-import com.auri.core.common.ignore
-import com.auri.core.common.util.catchLog
+import com.auri.core.common.util.catching
+import com.auri.core.common.util.ctx
 import com.auri.core.common.util.installF
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -46,46 +45,65 @@ class VirtualBoxVMManager(
     override suspend fun launchVM() = either {
         resourceScope {
             withContext(Dispatchers.IO) {
-                val vbManager = init().ignore().bind()
+                val vbManager = init().bind()
                 val vbSession = vbManager.sessionObject
                 val vbox = vbManager.vBox
-                val vbMachine = catchLog("Failed to find VM") { vbox.findMachine(definition.vmName) }
+                val vbMachine = catching { vbox.findMachine(definition.vmName) }
+                    .ctx("Finding VM")
+                    .bind()
                 Logger.d { "Found VM: ${vbMachine.name}" }
-                val snapshot = catchLog("Failed to find VM snapshot") { vbMachine.findSnapshot(definition.vmSnapshot) }
+                val snapshot = catching { vbMachine.findSnapshot(definition.vmSnapshot) }
+                    .ctx("Finding VM snapshot")
+                    .bind()
                 Logger.d { "Found snapshot: ${snapshot.name}" }
                 ensure(snapshot.online) {
-                    Logger.e { "Snapshot is not online" }
-                    raise(Unit)
+                    Throwable("Snapshot is not online")
                 }
                 installF(
                     {
-                        catchLog("Failed to lock VM")
-                        { vbMachine.lockMachine(vbSession, LockType.Shared) }
+                        catching { vbMachine.lockMachine(vbSession, LockType.Shared) }
+                            .ctx("Locking VM")
+                            .bind()
                     },
-                    { vbSession.unlockMachine() }
+                    {
+                        catching(vbSession::unlockMachine)
+                            .ctx("Unlocking VM in release")
+                            .bind()
+                    }
                 )
-                val currentMachineStatus = catchLog("Failed to get VM state") { vbMachine.state }
+                val currentMachineStatus = catching { vbMachine.state }
+                    .ctx("Getting VM state")
+                    .bind()
                 Logger.d { "Current VM state: $currentMachineStatus" }
                 when (currentMachineStatus) {
                     MachineState.PoweredOff -> Unit
                     MachineState.Saved,
-                    MachineState.AbortedSaved -> catchLog("Failed to discard VM state")
-                    { vbSession.machine.restoreSnapshot(snapshot) }
+                    MachineState.AbortedSaved -> catching {
+                        vbSession.machine.restoreSnapshot(snapshot)
+                    }.ctx("Restoring VM state")
+                        .bind()
 
                     else -> {
-                        Logger.e { "VM is not in a valid state to start" }
-                        raise(Unit)
+                        Logger.w { "VM is in an incorrect state: $currentMachineStatus, trying to stop it" }
+                        stopVM().bind()
                     }
                 }
-                val restoreProgress = catchLog("Failed to restore VM snapshot")
-                { vbSession.machine.restoreSnapshot(snapshot) }
+                val restoreProgress = catching { vbSession.machine.restoreSnapshot(snapshot) }
+                    .ctx("Restoring VM snapshot")
+                    .bind()
                 withContext(Dispatchers.IO) {
-                    catchLog("Failed to wait for VM to restore")
-                    { restoreProgress.waitForCompletion(definition.launchTimeout.inWholeMilliseconds.toInt()) }
+                    catching {
+                        restoreProgress.waitForCompletion(definition.launchTimeout.inWholeMilliseconds.toInt())
+                    }.ctx("Failed to wait for VM to restore")
+                        .bind()
+                }
+                ensure(restoreProgress.completed) {
+                    Throwable("Restore progress was not completed")
+                        .ctx("Restoring VM snapshot")
                 }
                 ensure(restoreProgress.resultCode == 0) {
-                    Logger.e { "VM failed to restore: ${restoreProgress.errorInfo.text}" }
-                    raise(Unit)
+                    Throwable("Result code was not 0, it was: ${restoreProgress.resultCode}")
+                        .ctx("Restoring VM snapshot")
                 }
                 Logger.d { "VM restored" }
                 val launchModeName = when (definition.launchMode) {
@@ -94,22 +112,32 @@ class VirtualBoxVMManager(
                     LaunchMode.SDL -> "sdl"
                     LaunchMode.UNSPECIFIED -> null
                 }
-                catchLog("Failed to unlock VM")
-                { vbSession.unlockMachine() }
-                awaitTrueSafe { vbMachine.sessionState == SessionState.Unlocked }.ignore()
-                val launchProgress = catchLog("Failed to launch VM")
-                { vbMachine.launchVMProcess(vbSession, launchModeName, null) }
+                catching(vbSession::unlockMachine)
+                    .ctx("Unlocking VM")
+                    .bind()
+                awaitTrueSafe { vbMachine.sessionState == SessionState.Unlocked }
+                    .ctx("VM session state was not unlocked after restore")
+                    .bind()
+                val launchProgress = catching {
+                    vbMachine.launchVMProcess(vbSession, launchModeName, null)
+                }.ctx("Launching VM")
+                    .bind()
                 withContext(Dispatchers.IO) {
-                    catchLog("Failed to wait for VM to start")
-                    { launchProgress.waitForCompletion(definition.launchTimeout.inWholeMilliseconds.toInt()) }
+                    catching {
+                        launchProgress.waitForCompletion(definition.launchTimeout.inWholeMilliseconds.toInt())
+                    }.ctx("Failed to wait for VM to start")
+                        .bind()
                 }
+                awaitTrueSafe { vbMachine.sessionState == SessionState.Locked }
+                    .ctx("VM session state was not locked after launch")
+                    .bind()
                 ensure(launchProgress.completed) {
-                    Logger.e { "VM failed to start: ${launchProgress.errorInfo.text}" }
-                    raise(Unit)
+                    Throwable("Launch progress was not completed")
+                        .ctx("Launching VM")
                 }
                 ensure(launchProgress.resultCode == 0) {
-                    Logger.e { "VM failed to start: ${launchProgress.errorInfo.text}" }
-                    raise(Unit)
+                    Throwable("Result code was not 0, it was: ${launchProgress.resultCode}")
+                        .ctx("Launching VM")
                 }
                 Logger.d { "VM started" }
             }
@@ -120,43 +148,53 @@ class VirtualBoxVMManager(
         resourceScope {
             withContext(Dispatchers.IO) {
                 Logger.d { "Stopping VM" }
-                val vbManager = init().ignore().bind()
+                val vbManager = init().bind()
                 val vbSession = vbManager.sessionObject
                 val vbox = vbManager.vBox
-                val vbMachine = catchLog("Failed to find VM")
-                { vbox.findMachine(definition.vmName) }
+                val vbMachine = catching { vbox.findMachine(definition.vmName) }
+                    .ctx("Finding VM")
+                    .bind()
                 Logger.d { "Found VM: ${vbMachine.name}" }
                 installF(
                     {
-                        catchLog("Failed to lock VM")
-                        { vbMachine.lockMachine(vbSession, LockType.Shared) }
+                        catching { vbMachine.lockMachine(vbSession, LockType.Shared) }
+                            .ctx("Locking VM")
+                            .bind()
                     },
-                    { it -> vbSession.unlockMachine() }
+                    {
+                        catching(vbSession::unlockMachine)
+                            .ctx("Unlocking VM in release")
+                            .bind()
+                    }
                 )
-                val currentMachineStatus = catchLog("Failed to get VM state")
-                { vbMachine.state }
+                val currentMachineStatus = catching { vbMachine.state }
+                    .ctx("Getting VM state")
+                    .bind()
                 Logger.d { "Current VM state: $currentMachineStatus" }
                 when (currentMachineStatus) {
                     MachineState.Running -> Unit
                     MachineState.PoweredOff -> return@withContext
                     MachineState.Saved,
-                    MachineState.AbortedSaved -> catchLog("Failed to discard VM state")
-                    { vbSession.machine.discardSavedState(true) }
+                    MachineState.AbortedSaved -> catching {
+                        vbSession.machine.discardSavedState(true)
+                    }.ctx("Discarding VM state due to it being: $currentMachineStatus")
+                        .bind()
 
                     else -> {
-                        Logger.e { "VM is not in a valid state to stop" }
-                        raise(Unit)
+                        Logger.w { "VM is in an incorrect state: $currentMachineStatus" }
                     }
                 }
-                val stopProgress = catchLog("Failed to save VM state")
-                { vbSession.console.powerDown() }
+                val stopProgress = catching(vbSession.console::powerDown)
+                    .ctx("Powering down VM")
+                    .bind()
                 withContext(Dispatchers.IO) {
-                    catchLog("Failed to wait for VM to stop")
-                    { stopProgress.waitForCompletion(definition.launchTimeout.inWholeMilliseconds.toInt()) }
+                    catching {
+                        stopProgress.waitForCompletion(definition.launchTimeout.inWholeMilliseconds.toInt())
+                    }.ctx("Failed to wait for VM to stop")
+                        .bind()
                 }
                 ensure(stopProgress.resultCode == 0) {
-                    Logger.e { "VM failed to stop: ${stopProgress.errorInfo.text}" }
-                    raise(Unit)
+                    Throwable("VM failed to stop: ${stopProgress.errorInfo.text}")
                 }
                 Logger.d { "VM stopped" }
             }
@@ -166,14 +204,19 @@ class VirtualBoxVMManager(
     private suspend fun ResourceScope.init(): Either<Throwable, VirtualBoxManager> = either {
         installF(
             {
-                catching("Failed to create VirtualBoxManager instance") { VirtualBoxManager.createInstance(null) }
+                catching { VirtualBoxManager.createInstance(null) }
+                    .ctx("Creating VirtualBoxManager")
+                    .bind()
             },
             {
-                catching("Failed to disconnect VirtualBoxManager", it::disconnect)
+                catching { it.cleanup() }
+                    .ctx("Cleaning up VirtualBoxManager")
+                    .bind()
             }
         ).apply {
-            catching("Failed to connect to VirtualBox endpoint")
-            { connect(definition.endpoint.toString(), definition.username, definition.password) }
+            catching { connect(definition.endpoint.toString(), definition.username, definition.password) }
+                .ctx("Connecting to VirtualBox endpoint")
+                .bind()
         }
     }
 
@@ -185,8 +228,12 @@ class VirtualBoxVMManager(
         .spaced<Throwable>(retryDelay)
         .and(Schedule.recurs(maxRetries.toLong()))
         .retryRaise {
-            val state = catching("Value kept throwing after exhausting the retries") { checkState() }
-            ensure(state) { Throwable("Value did not become true after exhausting the retries") }
+            val state = catching { checkState() }
+                .ctx("Check state kept throwing after exhausting the retries")
+                .bind()
+            ensure(state) {
+                Throwable("State was not true after $maxRetries retries")
+            }
         }
 
     enum class LaunchMode {

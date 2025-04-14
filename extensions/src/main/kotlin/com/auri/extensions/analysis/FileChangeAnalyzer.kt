@@ -7,13 +7,13 @@ import co.touchlab.kermit.Logger
 import com.auri.core.analysis.Analyzer
 import com.auri.core.analysis.ChangeReport
 import com.auri.core.analysis.VMInteraction
+import com.auri.core.common.util.ctx
 import com.auri.core.common.util.getResource
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.selects.select
 import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
@@ -53,22 +53,24 @@ class FileChangeAnalyzer(
     override suspend fun captureInitialState(
         workingDirectory: Path,
         interaction: VMInteraction
-    ): Either<Unit, Unit> = either {
-        initialState = getCurrentState(interaction).bind()
+    ): Either<Throwable, Unit> = either {
+        initialState = getCurrentState(interaction)
+            .ctx("Getting initial state")
+            .bind()
     }
 
     override suspend fun reportChanges(
         workingDirectory: Path,
         interaction: VMInteraction
-    ): Either<Unit, ChangeReport> = either {
+    ): Either<Throwable, ChangeReport> = either {
         val currentState = getCurrentState(interaction).getOrElse {
             return@either ChangeReport.AccessLost
         }
         val changesFound = initialState.flatMap { (path, initialFeatures) ->
             run {
-                val currentFeatures = currentState[path] ?: return@flatMap listOf("File was deleted")
+                val currentFeatures = currentState[path] ?: return@run listOf("File was deleted")
                 (currentFeatures differencesWith initialFeatures).orEmpty()
-            }.map { "($path) $it" }
+            }.map { "(${path.value}) $it" }
         }.toNonEmptyListOrNull() ?: return@either ChangeReport.NotChanged
         ChangeReport.Changed(what = changesFound)
     }
@@ -81,12 +83,10 @@ class FileChangeAnalyzer(
         coroutineScope {
             val job = Job()
             val result = select {
-                async(job) { command.run() }.onAwait { Unit.left() }
+                async(job) { command.run() }.onAwait(ScriptResult::RunEnded)
                 async(job) {
-                    command.commandError.consumeAsFlow().onEach {
-                        Logger.e { "Command error : $it" }
-                    }.firstOrNull()
-                }.onAwait { Unit.left() }
+                    command.commandError.consumeAsFlow().firstOrNull()
+                }.onAwait { ScriptResult.ConsoleErrorReceived(it!!) }
                 async(job) {
                     definition.files.map { path ->
                         command.commandInput.send("${path.value}\n")
@@ -98,12 +98,19 @@ class FileChangeAnalyzer(
                     }.reduce { acc, it ->
                         acc + it
                     }
-                }.onAwait {
-                    it.right()
-                }
-            }.bind()
+                }.onAwait(ScriptResult::AllFilesChecked)
+            }
             job.cancel()
-            result
+            when (result) {
+                is ScriptResult.RunEnded -> result.result
+                    .flatMap { Throwable("Script finished before checking all files").left() }
+
+                is ScriptResult.ConsoleErrorReceived -> Throwable("Script sent an error message: ${result.error}")
+                    .left()
+
+                is ScriptResult.AllFilesChecked -> result.data.right()
+            }.ctx("Running script to check file changes")
+                .bind()
         }
     }
 
@@ -197,6 +204,12 @@ class FileChangeAnalyzer(
                     .takeIf { FileFeature.Hash in definition.featuresToTrack }
             )
         }
+    }
+
+    private sealed interface ScriptResult {
+        data class RunEnded(val result: Either<Throwable, Int>) : ScriptResult
+        data class ConsoleErrorReceived(val error: String) : ScriptResult
+        data class AllFilesChecked(val data: Map<VMFilePath, FileState>) : ScriptResult
     }
 
     @JvmInline

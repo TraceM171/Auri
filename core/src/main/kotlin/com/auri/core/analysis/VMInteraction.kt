@@ -3,6 +3,8 @@ package com.auri.core.analysis
 import arrow.core.Either
 import arrow.core.raise.either
 import com.auri.core.common.ExtensionPoint
+import com.auri.core.common.HasDependencies
+import com.auri.core.common.MissingDependency
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
@@ -18,7 +20,7 @@ import java.nio.file.Path
  * This interface provides methods for sending commands to a virtual machine and receiving the output.
  */
 @ExtensionPoint
-interface VMInteraction {
+interface VMInteraction : HasDependencies, AutoCloseable {
     /**
      * The name of the VM interaction. Must be unique for each VM interaction.
      */
@@ -41,7 +43,7 @@ interface VMInteraction {
      * @return An [Either] that represents the result of the operation.
      *        [Either.Left] if the operation failed, [Either.Right] if the operation succeeded.
      */
-    suspend fun awaitReady(): Either<Unit, Unit>
+    suspend fun awaitReady(): Either<Throwable, Unit>
 
     /**
      * Prepares a command to be sent to a virtual machine.
@@ -61,7 +63,12 @@ interface VMInteraction {
      * @return An [Either] that represents the result of the operation.
      *        [Either.Left] if the operation failed, [Either.Right] if the operation succeeded.
      */
-    suspend fun sendFile(source: InputStream, remotePath: Path): Either<Unit, Unit>
+    suspend fun sendFile(source: InputStream, remotePath: Path): Either<Throwable, Unit>
+
+
+    override suspend fun checkDependencies(): List<MissingDependency> = emptyList()
+
+    override fun close() = Unit
 
 
     /**
@@ -82,7 +89,7 @@ interface VMInteraction {
          * The error stream (stderr) for the command.
          */
         val commandError: ReceiveChannel<String>,
-        private val run: suspend () -> Either<Unit, Int>
+        private val run: suspend () -> Either<Throwable, Int>
     ) {
         /**
          * Runs the command.

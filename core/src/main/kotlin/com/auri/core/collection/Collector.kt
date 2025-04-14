@@ -12,7 +12,7 @@ import java.nio.file.Path
  * A collector is a component that collects samples from a source and emits them as [RawCollectedSample]s.
  */
 @ExtensionPoint
-interface Collector : HasDependencies {
+interface Collector : HasDependencies, AutoCloseable {
     /**
      * The name of the collector. Must be unique for each collector.
      */
@@ -30,7 +30,7 @@ interface Collector : HasDependencies {
 
     /**
      * Starts the collection process.
-     * 
+     *
      * @param collectionParameters The parameters for the collection.
      * @return A flow of [CollectorStatus] objects that represent changes in the collection status.
      */
@@ -39,6 +39,8 @@ interface Collector : HasDependencies {
     ): Flow<CollectorStatus>
 
     override suspend fun checkDependencies(): List<MissingDependency> = emptyList()
+
+    override fun close() = Unit
 
     /**
      * Parameters for the collection.

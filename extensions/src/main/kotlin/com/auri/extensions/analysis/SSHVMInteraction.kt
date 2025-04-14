@@ -1,7 +1,6 @@
 package com.auri.extensions.analysis
 
 import arrow.core.Either
-import arrow.core.raise.catch
 import arrow.core.raise.either
 import arrow.fx.coroutines.ResourceScope
 import arrow.fx.coroutines.resourceScope
@@ -9,13 +8,13 @@ import arrow.resilience.Schedule
 import arrow.resilience.retryEither
 import co.touchlab.kermit.Logger
 import com.auri.core.analysis.VMInteraction
-import com.auri.core.common.util.catchLog
+import com.auri.core.common.util.catching
+import com.auri.core.common.util.ctx
 import com.auri.core.common.util.installF
 import com.auri.core.common.util.linesFlow
 import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.ChannelSftp
 import com.jcraft.jsch.JSch
-import com.jcraft.jsch.Session
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.consumeAsFlow
@@ -49,13 +48,13 @@ class SSHVMInteraction(
         val connectionTimeout: Duration = 5.seconds,
     )
 
-    override suspend fun awaitReady(): Either<Unit, Unit> = withContext(dispatcher) {
+    override suspend fun awaitReady(): Either<Throwable, Unit> = withContext(dispatcher) {
         Schedule
-            .spaced<Unit>(2.seconds)
+            .spaced<Throwable>(2.seconds)
             .and(Schedule.recurs(10))
             .retryEither {
                 resourceScope {
-                    init(testConn = true).map { }
+                    init().map { }
                 }
             }
     }
@@ -82,17 +81,26 @@ class SSHVMInteraction(
                             {},
                             { commandErrorChannel.close() }
                         )
-                        val session = init().bind()
+                        val session = init().onLeft {
+                            Logger.e { "Cavalry!" }
+                        }.bind()
 
                         val channel = installF(
                             {
-                                catchLog("Failed to create SSH channel")
-                                { session.openChannel("exec") as ChannelExec }
+                                catching { session.openChannel("exec") as ChannelExec }
+                                    .ctx("Creating SSH channel")
+                                    .bind()
                             },
-                            release = ChannelExec::disconnect
+                            {
+                                catching(it::disconnect)
+                                    .ctx("Disconnecting SSH channel")
+                                    .bind()
+                            }
                         )
                         channel.setCommand(command)
-                        catchLog("Failed to connect to SSH channel") { channel.connect(definition.connectionTimeout.inWholeMilliseconds.toInt()) }
+                        catching { channel.connect(definition.connectionTimeout.inWholeMilliseconds.toInt()) }
+                            .ctx("Connecting to SSH channel")
+                            .bind()
                         Logger.d { "Waiting for command to finish" }
                         val channelInputStream = installF(
                             { channel.inputStream.bufferedReader() },
@@ -143,7 +151,7 @@ class SSHVMInteraction(
     override suspend fun sendFile(
         source: InputStream,
         remotePath: Path
-    ): Either<Unit, Unit> = either {
+    ): Either<Throwable, Unit> = either {
         withContext(dispatcher) {
             resourceScope {
                 Logger.d { "Sending file to $remotePath" }
@@ -151,43 +159,55 @@ class SSHVMInteraction(
 
                 val channel = installF(
                     {
-                        catchLog("Failed to create SFTP channel")
-                        { session.openChannel("sftp") as ChannelSftp }
+                        catching { session.openChannel("sftp") as ChannelSftp }
+                            .ctx("Creating SFTP channel")
+                            .bind()
                     },
-                    ChannelSftp::disconnect
+                    {
+                        catching(it::disconnect)
+                            .ctx("Disconnecting SFTP channel")
+                            .bind()
+                    }
                 )
-                catchLog("Failed to connect to SFTP channel", channel::connect)
+                catching(channel::connect)
+                    .ctx("Connecting to SFTP channel")
+                    .bind()
                 val took = measureTime {
-                    catchLog("Failed to send file")
-                    { channel.put(source, "/" + remotePath.pathString.removePrefix("/")) }
+                    catching { channel.put(source, remotePath.pathString) }
+                        .ctx("Sending file")
+                        .bind()
                 }
                 Logger.d { "File sent in $took" }
             }
         }
     }
 
-    private suspend fun ResourceScope.init(testConn: Boolean = false) = either {
+    private suspend fun ResourceScope.init() = either {
         val jsch = JSch()
 
         val session = installF(
             {
-                catchLog("Failed to create SSH session")
-                { jsch.getSession(definition.username, definition.host.hostAddress, definition.port) }
+                catching { jsch.getSession(definition.username, definition.host.hostAddress, definition.port) }
+                    .ctx("Creating SSH session")
+                    .bind()
             },
-            Session::disconnect
+            {
+                catching(it::disconnect)
+                    .ctx("Disconnecting SSH session")
+                    .bind()
+            }
         ).apply {
             setPassword(definition.password)
             setConfig("StrictHostKeyChecking", "no")
         }
-        catch(
-            {
-                session.connect(definition.connectionTimeout.inWholeMilliseconds.toInt())
-            },
-            {
-                if (!testConn) Logger.w { "Failed to connect to SSH session" }
-                raise(Unit)
-            }
-        )
+        catching { session.connect(definition.connectionTimeout.inWholeMilliseconds.toInt()) }
+            .ctx("Connecting to SSH session")
+            .bind()
+
         session!!
+    }
+
+    override fun close() {
+        dispatcher.close()
     }
 }

@@ -21,11 +21,15 @@ import com.auri.app.conf.configByPrefix
 import com.auri.app.conf.model.AnalysisPhaseConfig
 import com.auri.app.conf.model.CollectionPhaseConfig
 import com.auri.app.conf.model.MainConf
+import com.auri.core.analysis.Analyzer
+import com.auri.core.collection.Collector
+import com.auri.core.collection.InfoProvider
 import com.auri.core.common.util.chainIfNotNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
 import org.jetbrains.exposed.sql.Database
@@ -44,6 +48,7 @@ suspend fun CoroutineScope.launchSampleCollection(
         baseDirectory = baseDirectory,
         runbook = runbook,
         minLogSeverity = minLogSeverity,
+        actionName = "collection",
         pruneCache = pruneCache
     ).getOrElse {
         return when (it) {
@@ -75,7 +80,7 @@ suspend fun CoroutineScope.launchSampleCollection(
         collectors = phaseConfig.collectors,
         infoProviders = phaseConfig.infoProviders
     )
-    launch { collectionService.run() }
+    val job = launch { collectionService.run() }
 
     return collectionService.collectionStatus.transformWhile {
         emit(it)
@@ -88,6 +93,12 @@ suspend fun CoroutineScope.launchSampleCollection(
             is CollectionProcessStatus.Finished,
             is CollectionProcessStatus.MissingDependencies,
             is CollectionProcessStatus.Failed -> false
+        }
+    }.onCompletion {
+        job.cancel()
+        phaseConfig.run {
+            collectors.forEach(Collector::close)
+            infoProviders.forEach(InfoProvider::close)
         }
     }
 }
@@ -102,6 +113,7 @@ suspend fun CoroutineScope.launchSampleAnalysis(
     val initContext = init(
         baseDirectory = baseDirectory,
         runbook = runbook,
+        actionName = "analysis",
         minLogSeverity = minLogSeverity,
         pruneCache = pruneCache
     ).getOrElse {
@@ -140,7 +152,8 @@ suspend fun CoroutineScope.launchSampleAnalysis(
         analyzeEvery = phaseConfig.analyzeEvery,
         keepListening = phaseConfig.keepListening.takeIf { streamed },
     )
-    launch { analysisService.run() }
+    val job = launch { analysisService.run() }
+
 
     return analysisService.analysisStatus.transformWhile {
         emit(it)
@@ -155,6 +168,13 @@ suspend fun CoroutineScope.launchSampleAnalysis(
             is AnalysisProcessStatus.MissingDependencies,
             is AnalysisProcessStatus.Failed -> false
         }
+    }.onCompletion {
+        job.cancel()
+        phaseConfig.run {
+            vmManager.close()
+            vmInteraction.close()
+            analyzers.forEach(Analyzer::close)
+        }
     }
 }
 
@@ -164,25 +184,32 @@ private suspend fun init(
     baseDirectory: Path,
     runbook: Path,
     minLogSeverity: Severity,
+    actionName: String,
     pruneCache: Boolean
 ) = either<InitError, InitContext> {
     val cacheDir = baseDirectory.resolve("cache/collection")
     val samplesDir = baseDirectory.resolve("samples")
     val extensionsDir = baseDirectory.resolve("extensions")
-    val logsFile = baseDirectory.resolve("auri")
+    val logsFolder = baseDirectory.resolve("logs")
+    val logsFile = logsFolder.resolve(actionName)
     val auriDB = baseDirectory.resolve("auri.db").let(::sqliteConnection)
 
     Logger.run {
-        setMinSeverity(minLogSeverity)
         setLogWriters(
             RollingFileLogWriter(
                 config = RollingFileLogWriterConfig(
+                    logFilePath = kotlinx.io.files.Path(logsFolder.pathString),
                     logFileName = logsFile.name,
-                    logFilePath = kotlinx.io.files.Path(logsFile.parent.pathString),
+                    maxLogFiles = 1,
+                    logTag = true,
+                    prependTimestamp = true,
                 ),
                 messageStringFormatter = DefaultMessageFormatter("com.auri")
             )
         )
+        setMinSeverity(Severity.Info)
+        i { "\n\n*** Starting Auri ***\n" }
+        setMinSeverity(minLogSeverity)
     }
 
     val mainConfig = withError({ InitError.GettingMainConfig(it) }) {

@@ -1,6 +1,8 @@
 package com.auri.core.collection
 
 import com.auri.core.common.ExtensionPoint
+import com.auri.core.common.HasDependencies
+import com.auri.core.common.MissingDependency
 import com.auri.core.common.util.HashAlgorithms
 
 /**
@@ -9,7 +11,7 @@ import com.auri.core.common.util.HashAlgorithms
  * A info provider is a component that, using the hash value of a sample, provides information about that sample.
  */
 @ExtensionPoint
-interface InfoProvider {
+interface InfoProvider : HasDependencies, AutoCloseable {
     /**
      * The name of the info provider. Must be unique for each info provider.
      */
@@ -34,4 +36,9 @@ interface InfoProvider {
     suspend fun sampleInfoByHash(
         getHashValue: (HashAlgorithms) -> String
     ): SampleInfo?
+
+
+    override suspend fun checkDependencies(): List<MissingDependency> = emptyList()
+
+    override fun close() = Unit
 }
