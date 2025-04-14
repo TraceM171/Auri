@@ -56,18 +56,18 @@ private fun VerticalLayoutBuilder.tui(
             cell("Not started") {
                 style(bold = true)
             }
-            cell(Text("The analysis will begin shortly", whitespace = Whitespace.NORMAL))
+            cell(Text("The analysis will begin shortly", whitespace = Whitespace.PRE_WRAP))
         }
 
         AnalysisProcessStatus.Initializing -> {
             cell("Initializing") {
                 style(bold = true)
             }
-            cell(Text("Performing phase initialization tasks", whitespace = Whitespace.NORMAL))
+            cell(Text("Performing phase initialization tasks", whitespace = Whitespace.PRE_WRAP))
         }
 
         is AnalysisProcessStatus.CapturingGoodState -> {
-            cell(Text("Capturing good state", whitespace = Whitespace.NORMAL)) {
+            cell(Text("Capturing good state", whitespace = Whitespace.PRE_WRAP)) {
                 style(bold = true)
             }
             cell(
@@ -75,7 +75,7 @@ private fun VerticalLayoutBuilder.tui(
                     """
                         The analysis is capturing the good state of the system, this is done by running the analyzers on a fresh virtual machine snapshot, without any malware.
                     """.trimIndent(),
-                    whitespace = Whitespace.NORMAL
+                    whitespace = Whitespace.PRE_WRAP
                 )
             )
             val subStepText = when (val subStep = processStatus.step) {
@@ -84,7 +84,7 @@ private fun VerticalLayoutBuilder.tui(
                 AnalysisProcessStatus.CapturingGoodState.Step.StoppingVM -> "Stopping VM"
             }
             cell("")
-            cell(Text(subStepText, whitespace = Whitespace.NORMAL)) {
+            cell(Text(subStepText, whitespace = Whitespace.PRE_WRAP)) {
                 style(italic = true)
             }
             cell("")
@@ -100,7 +100,7 @@ private fun VerticalLayoutBuilder.tui(
                         The samples are being analyzed and its status is shown in the table bellow.
                         If streaming is enabled, the analysis will continue indefinitely, in this case the phase can be ended by pressing [^C] when the user desires, results are saved on receive, so none will be lost by ending forcefully.
                     """.trimIndent(),
-                    whitespace = Whitespace.NORMAL
+                    whitespace = Whitespace.PRE_WRAP
                 )
             )
             processStatus.runningNow?.let { runningNow ->
@@ -126,11 +126,11 @@ private fun VerticalLayoutBuilder.tui(
                 cell("")
                 cell(
                     horizontalLayout {
-                        cell(Text("Sample ${runningNow.sampleId}", whitespace = Whitespace.NORMAL)) {
+                        cell(Text("Sample ${runningNow.sampleId}", whitespace = Whitespace.PRE_WRAP)) {
                             style(italic = true)
                         }
                         cell(" - ")
-                        cell(Text(subStepName, whitespace = Whitespace.NORMAL))
+                        cell(Text(subStepName, whitespace = Whitespace.PRE_WRAP))
                     }
                 )
                 cell("")
@@ -147,13 +147,13 @@ private fun VerticalLayoutBuilder.tui(
                         The analysis has finished because all the samples have been analyzed and streaming is not enabled.
                         All results have been saved.
                     """.trimIndent(),
-                    whitespace = Whitespace.NORMAL
+                    whitespace = Whitespace.PRE_WRAP
                 )
             )
         }
 
         is AnalysisProcessStatus.MissingDependencies -> {
-            cell(Text("Some needed dependencies are missing", whitespace = Whitespace.NORMAL)) {
+            cell(Text("Some needed dependencies are missing", whitespace = Whitespace.PRE_WRAP)) {
                 style(bold = true, color = TextColors.brightRed)
             }
             cell(
@@ -185,7 +185,7 @@ private fun VerticalLayoutBuilder.tui(
             cell(
                 Text(
                     "An error occurred in ${processStatus.what}: ${processStatus.why}",
-                    whitespace = Whitespace.NORMAL
+                    whitespace = Whitespace.PRE_WRAP
                 )
             ) {
                 style(color = TextColors.brightRed)

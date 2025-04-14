@@ -18,11 +18,10 @@ import com.auri.core.analysis.ChangeReport
 import com.auri.core.analysis.VMInteraction
 import com.auri.core.analysis.VMManager
 import com.auri.core.common.util.ctx
+import com.auri.core.common.util.messageWithCtx
 import com.auri.core.common.util.onLeftLog
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.Clock
 import kotlinx.datetime.toKotlinLocalDate
@@ -87,8 +86,8 @@ internal class AnalysisService(
             .getOrElse { error ->
                 _analysisStatus.update {
                     AnalysisProcessStatus.Failed(
-                        what = "Failed to launch VM",
-                        why = error.message ?: "Unknown"
+                        what = "launch VM",
+                        why = error.messageWithCtx ?: "Unknown"
                     )
                 }
                 return
@@ -100,8 +99,8 @@ internal class AnalysisService(
             .getOrElse { error ->
                 _analysisStatus.update {
                     AnalysisProcessStatus.Failed(
-                        what = "Failed to wait for VM",
-                        why = error.message ?: "Unknown"
+                        what = "wait for VM",
+                        why = error.messageWithCtx ?: "Unknown"
                     )
                 }
                 return
@@ -123,8 +122,8 @@ internal class AnalysisService(
                 .getOrElse { error ->
                     _analysisStatus.update {
                         AnalysisProcessStatus.Failed(
-                            what = "Failed to capture initial state by analyzer ${analyzer.name}",
-                            why = error.message ?: "Unknown"
+                            what = "capture initial state by analyzer ${analyzer.name}",
+                            why = error.messageWithCtx ?: "Unknown"
                         )
                     }
                     return
@@ -140,8 +139,8 @@ internal class AnalysisService(
             .getOrElse { error ->
                 _analysisStatus.update {
                     AnalysisProcessStatus.Failed(
-                        what = "Failed to stop VM",
-                        why = error.message ?: "Unknown"
+                        what = "stop VM",
+                        why = error.messageWithCtx ?: "Unknown"
                     )
                 }
                 return
@@ -160,7 +159,7 @@ internal class AnalysisService(
             )
         }
         var collectionError = false
-        allSamples.collect { entity ->
+        allSamples.takeWhile { entity ->
             Logger.d { "Starting analysis for sample ${entity.name}" }
             val samplePath = samplesDir.resolve(entity.path)
             _analysisStatus.update {
@@ -179,12 +178,12 @@ internal class AnalysisService(
                 .getOrElse { error ->
                     _analysisStatus.update {
                         AnalysisProcessStatus.Failed(
-                            what = "Failed to launch VM",
-                            why = error.message ?: "Unknown"
+                            what = "launch VM",
+                            why = error.messageWithCtx ?: "Unknown"
                         )
                     }
                     collectionError = true
-                    return@collect
+                    return@takeWhile false
                 }
             Logger.d { "Launched VM" }
             Logger.d { "Waiting for VM to be ready" }
@@ -195,12 +194,12 @@ internal class AnalysisService(
                 .getOrElse { error ->
                     _analysisStatus.update {
                         AnalysisProcessStatus.Failed(
-                            what = "Failed to wait for VM",
-                            why = error.message ?: "Unknown"
+                            what = "wait for VM",
+                            why = error.messageWithCtx ?: "Unknown"
                         )
                     }
                     collectionError = true
-                    return@collect
+                    return@takeWhile false
                 }
             Logger.d { "VM is ready" }
             _analysisStatus.update {
@@ -214,15 +213,16 @@ internal class AnalysisService(
             vmInteraction.sendFile(samplePath.inputStream().buffered(), sampleExecutionPath)
                 .ctx("Sending file")
                 .ctx("Analyzing sample ${entity.name}")
+                .onLeftLog()
                 .getOrElse { error ->
                     _analysisStatus.update {
                         AnalysisProcessStatus.Failed(
-                            what = "Failed to send file",
-                            why = error.message ?: "Unknown"
+                            what = "send file",
+                            why = error.messageWithCtx ?: "Unknown"
                         )
                     }
                     collectionError = true
-                    return@collect
+                    return@takeWhile false
                 }
             Logger.d { "Sent file" }
             _analysisStatus.update {
@@ -240,12 +240,12 @@ internal class AnalysisService(
                 .getOrElse { error ->
                     _analysisStatus.update {
                         AnalysisProcessStatus.Failed(
-                            what = "Failed to prepare command",
-                            why = error.message ?: "Unknown"
+                            what = "prepare command",
+                            why = error.messageWithCtx ?: "Unknown"
                         )
                     }
                     collectionError = true
-                    return@collect
+                    return@takeWhile false
                 }
             vmInteraction.prepareCommand("""schtasks /RUN /TN "LaunchSample"""")
                 .run()
@@ -254,12 +254,12 @@ internal class AnalysisService(
                 .getOrElse { error ->
                     _analysisStatus.update {
                         AnalysisProcessStatus.Failed(
-                            what = "Failed to run command",
-                            why = error.message ?: "Unknown"
+                            what = "run command",
+                            why = error.messageWithCtx ?: "Unknown"
                         )
                     }
                     collectionError = true
-                    return@collect
+                    return@takeWhile false
                 }
             Logger.d { "Ran file" }
             _analysisStatus.update {
@@ -319,12 +319,12 @@ internal class AnalysisService(
                 .getOrElse { error ->
                 _analysisStatus.update {
                     AnalysisProcessStatus.Failed(
-                        what = "Failed to stop VM",
-                        why = error.message ?: "Unknown"
+                        what = "stop VM",
+                        why = error.messageWithCtx ?: "Unknown"
                     )
                 }
                 collectionError = true
-                return@collect
+                    return@takeWhile false
             }
             Logger.d { "Stopped VM" }
             _analysisStatus.update {
@@ -340,7 +340,8 @@ internal class AnalysisService(
                     )
                 )
             }
-        }
+            true
+        }.collect()
         if (collectionError) return
         Logger.i { "Analysis finished" }
         _analysisStatus.update {

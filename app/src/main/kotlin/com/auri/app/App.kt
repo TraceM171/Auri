@@ -25,6 +25,7 @@ import com.auri.core.analysis.Analyzer
 import com.auri.core.collection.Collector
 import com.auri.core.collection.InfoProvider
 import com.auri.core.common.util.chainIfNotNull
+import com.auri.core.common.util.messageWithCtx
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -55,7 +56,7 @@ suspend fun CoroutineScope.launchSampleCollection(
             is InitError.GettingMainConfig -> flowOf(
                 CollectionProcessStatus.Failed(
                     what = "Failed to load main segment of runbook",
-                    why = it.cause.message ?: "Unknown error"
+                    why = it.cause.messageWithCtx ?: "Unknown error"
                 )
             )
         }
@@ -68,7 +69,7 @@ suspend fun CoroutineScope.launchSampleCollection(
         return flowOf(
             CollectionProcessStatus.Failed(
                 what = "Failed to load collection phase segment of runbook",
-                why = it.message ?: "Unknown error"
+                why = it.messageWithCtx ?: "Unknown error"
             )
         )
     }
@@ -121,7 +122,7 @@ suspend fun CoroutineScope.launchSampleAnalysis(
             is InitError.GettingMainConfig -> flowOf(
                 AnalysisProcessStatus.Failed(
                     what = "Failed to load main segment of runbook",
-                    why = it.cause.message ?: "Unknown error"
+                    why = it.cause.messageWithCtx ?: "Unknown error"
                 )
             )
         }
@@ -134,7 +135,7 @@ suspend fun CoroutineScope.launchSampleAnalysis(
         return flowOf(
             AnalysisProcessStatus.Failed(
                 what = "loading analysis phase segment of runbook",
-                why = it.message ?: "Unknown error"
+                why = it.messageWithCtx ?: "Unknown error"
             )
         )
     }

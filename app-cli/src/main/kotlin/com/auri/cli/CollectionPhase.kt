@@ -54,14 +54,14 @@ private fun VerticalLayoutBuilder.tui(
             cell("Not started") {
                 style(bold = true)
             }
-            cell(Text("The collection will begin shortly", whitespace = Whitespace.NORMAL))
+            cell(Text("The collection will begin shortly", whitespace = Whitespace.PRE_WRAP))
         }
 
         CollectionProcessStatus.Initializing -> {
             cell("Initializing") {
                 style(bold = true)
             }
-            cell(Text("The collectors are being initialized", whitespace = Whitespace.NORMAL))
+            cell(Text("The collectors are being initialized", whitespace = Whitespace.PRE_WRAP))
         }
 
         is CollectionProcessStatus.Collecting -> {
@@ -75,7 +75,7 @@ private fun VerticalLayoutBuilder.tui(
                         This phase will stop when all all the collectors finish.
                         Note that, depending on the runbook, some collectors may be scheduled periodically, thus they may never finish, in this case the phase can be ended by pressing [^C] when the user desires, samples are saved on receive, so none will be lost by ending forcefully.
                     """.trimIndent(),
-                    whitespace = Whitespace.NORMAL
+                    whitespace = Whitespace.PRE_WRAP
                 )
             )
         }
@@ -90,13 +90,13 @@ private fun VerticalLayoutBuilder.tui(
                         The collection has finished because all the collectors ended and none are scheduled.
                         All samples have been saved.
                     """.trimIndent(),
-                    whitespace = Whitespace.NORMAL
+                    whitespace = Whitespace.PRE_WRAP
                 )
             )
         }
 
         is CollectionProcessStatus.MissingDependencies -> {
-            cell(Text("Some needed dependencies are missing", whitespace = Whitespace.NORMAL)) {
+            cell(Text("Some needed dependencies are missing", whitespace = Whitespace.PRE_WRAP)) {
                 style(bold = true, color = TextColors.brightRed)
             }
             cell(
@@ -128,7 +128,7 @@ private fun VerticalLayoutBuilder.tui(
             cell(
                 Text(
                     "An error occurred in ${processStatus.what}: ${processStatus.why}",
-                    whitespace = Whitespace.NORMAL
+                    whitespace = Whitespace.PRE_WRAP
                 )
             ) {
                 style(color = TextColors.brightRed)
@@ -161,7 +161,7 @@ private fun VerticalLayoutBuilder.analysisStatsTui(collectionStats: CollectionPr
         body {
             collectionStats.collectorsStatus.forEach { (collector, status) ->
                 row {
-                    cell(Text(collector.name, whitespace = Whitespace.NORMAL))
+                    cell(Text(collector.name, whitespace = Whitespace.PRE_WRAP))
                     cell(collectionStats.samplesCollectedByCollector[collector]) {
                         align = TextAlign.CENTER
                     }
@@ -175,7 +175,7 @@ private fun VerticalLayoutBuilder.analysisStatsTui(collectionStats: CollectionPr
                             cell(
                                 Text(
                                     "Done until next period (${nextPeriodIn.inWholeSeconds.seconds})",
-                                    whitespace = Whitespace.NORMAL
+                                    whitespace = Whitespace.PRE_WRAP
                                 )
                             ) {
                                 style(color = TextColors.green)
@@ -185,7 +185,7 @@ private fun VerticalLayoutBuilder.analysisStatsTui(collectionStats: CollectionPr
                         is CollectorStatus.Downloading -> cell(
                             Text(
                                 "Downloading ${status.what.elipsis(25)}",
-                                whitespace = Whitespace.NORMAL
+                                whitespace = Whitespace.PRE_WRAP
                             )
                         ) {
                             style(color = TextColors.brightBlue)
@@ -194,7 +194,7 @@ private fun VerticalLayoutBuilder.analysisStatsTui(collectionStats: CollectionPr
                         is CollectorStatus.NewSample -> cell(
                             Text(
                                 "New sample ${status.sample.name.elipsis(20)}",
-                                whitespace = Whitespace.NORMAL
+                                whitespace = Whitespace.PRE_WRAP
                             )
                         ) {
                             style(color = TextColors.brightCyan)
@@ -203,7 +203,7 @@ private fun VerticalLayoutBuilder.analysisStatsTui(collectionStats: CollectionPr
                         is CollectorStatus.Processing -> cell(
                             Text(
                                 "Processing ${status.what.elipsis(25)}",
-                                whitespace = Whitespace.NORMAL
+                                whitespace = Whitespace.PRE_WRAP
                             )
                         ) {
                             style(color = TextColors.blue)
@@ -212,7 +212,7 @@ private fun VerticalLayoutBuilder.analysisStatsTui(collectionStats: CollectionPr
                         is CollectorStatus.Failed -> cell(
                             Text(
                                 "Failed ${status.what}: ${status.why}",
-                                whitespace = Whitespace.NORMAL
+                                whitespace = Whitespace.PRE_WRAP
                             )
                         ) {
                             style(color = TextColors.brightRed)
@@ -223,7 +223,7 @@ private fun VerticalLayoutBuilder.analysisStatsTui(collectionStats: CollectionPr
                             cell(
                                 Text(
                                     "Retrying ${status.what} (${nextTryIn.inWholeSeconds.seconds}): ${status.why}",
-                                    whitespace = Whitespace.NORMAL
+                                    whitespace = Whitespace.PRE_WRAP
                                 )
                             ) {
                                 style(color = TextColors.red)

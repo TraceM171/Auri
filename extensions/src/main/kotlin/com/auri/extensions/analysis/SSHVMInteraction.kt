@@ -173,8 +173,8 @@ class SSHVMInteraction(
                     .ctx("Connecting to SFTP channel")
                     .bind()
                 val took = measureTime {
-                    catching { channel.put(source, remotePath.pathString) }
-                        .ctx("Sending file")
+                    catching { channel.put(source, "/" + remotePath.pathString.removePrefix("/")) }
+                        .ctx("Sending to channel")
                         .bind()
                 }
                 Logger.d { "File sent in $took" }

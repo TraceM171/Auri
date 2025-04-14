@@ -12,19 +12,18 @@ import co.touchlab.kermit.Severity
 private class ContextualThrowable(
     message: String,
     override val cause: Throwable
-) : Throwable(message, cause) {
-    val descontextualizad: Throwable
-        get() = (cause as? ContextualThrowable)?.descontextualizad ?: cause
+) : Throwable(message, cause)
 
-    val fullMessage: String
-        get() = buildString {
-            appendLine("(Context): $message")
-            when (cause) {
-                is ContextualThrowable -> append(cause.fullMessage)
-                else -> append(cause.message)
-            }
-        }
-}
+val Throwable.deCtx: Throwable
+    get() = when (this) {
+        is ContextualThrowable -> cause
+        else -> this
+    }
+val Throwable.messageWithCtx: String?
+    get() = when (this) {
+        is ContextualThrowable -> "$message -> ${cause.messageWithCtx}"
+        else -> message
+    }
 
 fun Throwable.ctx(context: String): Throwable = ContextualThrowable(
     message = context,
@@ -44,14 +43,10 @@ fun <B> Either<Throwable, B>.ignore() = mapLeft { }
 
 fun <B> Either<Throwable, B>.onLeftLog(severity: Severity = Severity.Error) = onLeft {
     if (Logger.config.minSeverity > severity) return@onLeft
-    val message = when (it) {
-        is ContextualThrowable -> it.fullMessage
-        else -> it.message
-    }
     Logger.log(
         tag = "",
         severity = severity,
         throwable = it,
-        message = "Error: $message"
+        message = "${it.messageWithCtx}"
     )
 }
