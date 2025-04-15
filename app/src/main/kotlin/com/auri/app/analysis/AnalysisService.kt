@@ -1,5 +1,6 @@
 package com.auri.app.analysis
 
+import arrow.core.Either
 import arrow.core.getOrElse
 import arrow.core.left
 import arrow.core.toNonEmptyListOrNull
@@ -7,6 +8,7 @@ import arrow.fx.coroutines.parMapNotNull
 import arrow.resilience.Schedule
 import arrow.resilience.retryEither
 import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import com.auri.app.common.data.KeepListening
 import com.auri.app.common.data.entity.RawSampleEntity
 import com.auri.app.common.data.entity.RawSampleTable
@@ -33,6 +35,7 @@ import java.nio.file.Path
 import java.time.LocalDate
 import kotlin.io.path.inputStream
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 internal class AnalysisService(
@@ -79,10 +82,12 @@ internal class AnalysisService(
         )
 
         _analysisStatus.update { AnalysisProcessStatus.CapturingGoodState(AnalysisProcessStatus.CapturingGoodState.Step.StartingVM) }
-        vmManager.launchVM()
-            .ctx("Launching VM")
-            .ctx("Capturing initial state")
-            .onLeftLog()
+        retryingOperation {
+            vmManager.launchVM()
+                .ctx("Launching VM")
+                .ctx("Capturing initial state")
+                .onLeftLog(severity = Severity.Warn, onlyMessage = true)
+        }.onLeftLog()
             .getOrElse { error ->
                 _analysisStatus.update {
                     AnalysisProcessStatus.Failed(
@@ -132,10 +137,12 @@ internal class AnalysisService(
         Logger.d { "Captured initial state" }
         _analysisStatus.update { AnalysisProcessStatus.CapturingGoodState(AnalysisProcessStatus.CapturingGoodState.Step.StoppingVM) }
         Logger.d { "Stopping VM" }
-        vmManager.stopVM()
-            .ctx("Stopping VM")
-            .ctx("Capturing initial state")
-            .onLeftLog()
+        retryingOperation {
+            vmManager.stopVM()
+                .ctx("Stopping VM")
+                .ctx("Capturing initial state")
+                .onLeftLog(severity = Severity.Warn, onlyMessage = true)
+        }.onLeftLog()
             .getOrElse { error ->
                 _analysisStatus.update {
                     AnalysisProcessStatus.Failed(
@@ -171,10 +178,12 @@ internal class AnalysisService(
                     )
                 )
             }
-            vmManager.launchVM()
-                .ctx("Launching VM")
-                .ctx("Analyzing sample ${entity.name}")
-                .onLeftLog()
+            retryingOperation {
+                vmManager.launchVM()
+                    .ctx("Launching VM")
+                    .ctx("Analyzing sample ${entity.name}")
+                    .onLeftLog(severity = Severity.Warn, onlyMessage = true)
+            }.onLeftLog()
                 .getOrElse { error ->
                     _analysisStatus.update {
                         AnalysisProcessStatus.Failed(
@@ -313,19 +322,22 @@ internal class AnalysisService(
                     )
                 )
             }
-            vmManager.stopVM()
-                .ctx("Stopping VM")
-                .ctx("Analyzing sample ${entity.name}")
+            retryingOperation {
+                vmManager.stopVM()
+                    .ctx("Stopping VM")
+                    .ctx("Analyzing sample ${entity.name}")
+                    .onLeftLog(severity = Severity.Warn, onlyMessage = true)
+            }.onLeftLog()
                 .getOrElse { error ->
-                _analysisStatus.update {
-                    AnalysisProcessStatus.Failed(
-                        what = "stop VM",
-                        why = error.messageWithCtx ?: "Unknown"
-                    )
-                }
-                collectionError = true
+                    _analysisStatus.update {
+                        AnalysisProcessStatus.Failed(
+                            what = "stop VM",
+                            why = error.messageWithCtx ?: "Unknown"
+                        )
+                    }
+                    collectionError = true
                     return@takeWhile false
-            }
+                }
             Logger.d { "Stopped VM" }
             _analysisStatus.update {
                 val analyzingOrNull = (it as? AnalysisProcessStatus.Analyzing ?: return@update it)
@@ -372,4 +384,12 @@ internal class AnalysisService(
             },
             changeReport = this
         )
+
+    private suspend fun <L, R> retryingOperation(
+        maxRetries: Int = 3,
+        delay: Duration = 1.seconds,
+        operation: suspend () -> Either<L, R>
+    ) = Schedule.spaced<L>(delay)
+        .and(Schedule.recurs(maxRetries.toLong()))
+        .retryEither { operation() }
 }

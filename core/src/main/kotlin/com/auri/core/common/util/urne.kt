@@ -41,12 +41,15 @@ fun <B> Either<Throwable, B>.unwrap() = getOrElse { throw it }
 
 fun <B> Either<Throwable, B>.ignore() = mapLeft { }
 
-fun <B> Either<Throwable, B>.onLeftLog(severity: Severity = Severity.Error) = onLeft {
+fun <B> Either<Throwable, B>.onLeftLog(
+    severity: Severity = Severity.Error,
+    onlyMessage: Boolean = false
+) = onLeft {
     if (Logger.config.minSeverity > severity) return@onLeft
     Logger.log(
         tag = "",
         severity = severity,
-        throwable = it,
+        throwable = it.takeUnless { onlyMessage },
         message = "${it.messageWithCtx}"
     )
 }
