@@ -70,15 +70,16 @@ class VirusSignCollector(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun start(
-        collectionParameters: Collector.CollectionParameters
+        workingDirectory: Path,
+        checkSampleExistence: suspend (HashAlgorithms, String) -> Boolean
     ): Flow<CollectorStatus> = periodicCollection(
         periodicity = definition.periodicity,
-        collectionParameters = collectionParameters,
-        singleCollection = ::singleSamples
+        singleCollection = { singleSamples(workingDirectory) },
     )
 
+    @OptIn(ExperimentalPathApi::class)
     private fun singleSamples(
-        collectionParameters: Collector.CollectionParameters
+        workingDirectory: Path
     ): Flow<CollectorStatus> = flow {
         emit(Downloading(what = "Latest samples list"))
         val samplesLinks = api.samplesLinks().getOrElse {
@@ -95,26 +96,27 @@ class VirusSignCollector(
             }
         }
         emit(Processing(what = "Already downloaded samples"))
-        val alreadyDownloadedSamples = collectionParameters.workingDirectory
-            .listDirectoryEntries()
-            .filter { it.name.endsWith(".zip") }
-            .map { it.name }
+        val alreadyDownloadedUrlsFile = Path(workingDirectory.pathString, "already_downloaded.txt")
+            .apply { if (!exists()) createFile() }
+        val alreadyDownloadedUrls = alreadyDownloadedUrlsFile.readLines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
             .toSet()
-        Logger.i { "Found ${alreadyDownloadedSamples.size} already downloaded samples" }
-        val newSamples = samplesLinks.filter { Path(it.url.path).name !in alreadyDownloadedSamples }
+        Logger.i { "Found ${alreadyDownloadedUrls.size} already downloaded samples" }
+        val newSamples = samplesLinks.filter { it.url.toString() !in alreadyDownloadedUrls }
         Logger.i { "Found ${newSamples.size} new samples" }
-        samplesLinks.mapNotNull { sampleLink ->
-            val destination = collectionParameters.workingDirectory.resolve(Path(sampleLink.url.path).name)
+        newSamples.mapNotNull { sampleLink ->
+            val destination = workingDirectory.resolve(Path(sampleLink.url.path).name)
             emit(Processing(what = "Sample ${destination.nameWithoutExtension}"))
-            if (sampleLink in newSamples) {
-                emit(Downloading(what = "Sample ${destination.nameWithoutExtension}"))
-                api.downloadSample(sampleLink, destination).getOrElse {
-                    Logger.e { "Failed to download sample from ${sampleLink.url}: $it" }
-                    return@mapNotNull null
-                }
-                Logger.i { "Successfully downloaded sample from ${sampleLink.url}" }
+            emit(Downloading(what = "Sample ${destination.nameWithoutExtension}"))
+            api.downloadSample(sampleLink, destination).getOrElse {
+                Logger.e { "Failed to download sample from ${sampleLink.url}: $it" }
+                return@mapNotNull null
             }
-            extractSamples(destination).forEach { sample ->
+            alreadyDownloadedUrlsFile.appendText("${sampleLink.url}\n")
+            Logger.i { "Successfully downloaded sample from ${sampleLink.url}" }
+            val extractedDir = workingDirectory.resolve("${destination.nameWithoutExtension}_extracted")
+            extractSamples(destination, extractedDir).forEach { sample ->
                 val rawSample = RawCollectedSample(
                     submissionDate = sampleLink.date,
                     name = sample.nameWithoutExtension,
@@ -122,16 +124,18 @@ class VirusSignCollector(
                 )
                 emit(NewSample(rawSample))
             }
+            extractedDir.deleteRecursively()
         }
     }
 
     private fun extractSamples(
-        zipFile: Path
+        zipFile: Path,
+        destinationDir: Path,
     ): List<Path> {
-        val destinationDir = zipFile.parent.resolve(zipFile.nameWithoutExtension)
         if (!destinationDir.exists()) {
             Logger.d { "Extracting ${zipFile.nameWithoutExtension} with password ${definition.samplesPassword}" }
             zipFile.unzip(destinationDirectory = destinationDir, password = definition.samplesPassword)
+            zipFile.deleteExisting()
             Logger.d { "Successfully extracted ${zipFile.name}" }
         }
         Logger.d { "Searching for extracted executables" }

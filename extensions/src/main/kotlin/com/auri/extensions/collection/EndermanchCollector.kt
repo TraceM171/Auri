@@ -1,5 +1,6 @@
 package com.auri.extensions.collection
 
+import arrow.core.flatten
 import arrow.core.getOrElse
 import co.touchlab.kermit.Logger
 import com.auri.core.collection.Collector
@@ -50,24 +51,33 @@ class EndermanchCollector(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun start(
-        collectionParameters: Collector.CollectionParameters
+        workingDirectory: Path,
+        checkSampleExistence: suspend (HashAlgorithms, String) -> Boolean
     ): Flow<CollectorStatus> = periodicCollection(
         periodicity = definition.periodicity,
-        collectionParameters = collectionParameters,
-        singleCollection = ::singleSamples
+        singleCollection = { singleSamples(workingDirectory) },
     )
 
+    @OptIn(ExperimentalPathApi::class)
     private fun singleSamples(
-        collectionParameters: Collector.CollectionParameters
+        workingDirectory: Path,
     ): Flow<CollectorStatus> = flow {
         emit(Downloading(what = "Repository"))
-        val repoFolder = cloneRepo(
-            workingDirectory = collectionParameters.workingDirectory,
+        val cloneRepoResult = cloneRepo(
+            workingDirectory = workingDirectory,
             gitRepo = definition.gitRepo
         ).getOrElse {
             emit(Failed(what = "Clone repository", why = it))
             return@flow
         }
+        when (cloneRepoResult) {
+            is CloneRepoResult.NotChanged -> {
+                return@flow
+            }
+
+            else -> Unit
+        }
+        val repoFolder = cloneRepoResult.repoFolder
 
         emit(Processing(what = "Extract samples"))
         val extractedSamples = repoFolder.listDirectoryEntries()
@@ -75,7 +85,7 @@ class EndermanchCollector(
             .filter { it.isDirectory() }
             .filterNot { it.name.startsWith(".") }
             .filter { it.name in definition.samplesFolderFilter }
-            .flatMap { it.listDirectoryEntries().filter { it.name.endsWith(".zip") }.toList().orEmpty() }
+            .flatMap { it.listDirectoryEntries().filter { it.name.endsWith(".zip") }.toList() }
             .associateWith {
                 extractSamples(it)
             }
@@ -90,9 +100,13 @@ class EndermanchCollector(
             }
         }.flatten()
             .asFlow()
-            .map { NewSample(it) }
+            .map(::NewSample)
 
         emitAll(rawSamples)
+
+        repoFolder.listDirectoryEntries()
+            .filterNot { it.name.startsWith(".") }
+            .forEach(Path::deleteRecursively)
     }
 
     private fun extractSamples(
@@ -101,6 +115,7 @@ class EndermanchCollector(
         Logger.d { "Extracting ${zipFile.nameWithoutExtension} with password ${definition.samplesPassword}" }
         val destinationDir = zipFile.parent.resolve(zipFile.nameWithoutExtension)
         zipFile.unzip(destinationDirectory = destinationDir, password = definition.samplesPassword)
+        zipFile.deleteExisting()
         Logger.d { "Successfully extracted ${zipFile.name}" }
         Logger.d { "Searching for extracted executables" }
         val executables = destinationDir.walk()

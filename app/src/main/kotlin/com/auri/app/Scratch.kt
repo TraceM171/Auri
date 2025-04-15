@@ -9,7 +9,7 @@ fun main(): Unit = runBlocking {
     val baseDirectory = Path("/home/auri/TFM/auri/scratch/.auri")
     val runbook = Path("/home/auri/TFM/auri/scratch/runbook.yml")
 
-    launchSampleAnalysis(
+    /*launchSampleAnalysis(
         baseDirectory = baseDirectory,
         runbook = runbook,
         minLogSeverity = Severity.Debug,
@@ -17,14 +17,14 @@ fun main(): Unit = runBlocking {
         streamed = false
     ).collect { status ->
         println(status)
-    }
+    }*/
 
-    /*launchSampleCollection(
+    launchSampleCollection(
         baseDirectory = baseDirectory,
         runbook = runbook,
         minLogSeverity = Severity.Debug,
         pruneCache = false
     ).collect { status ->
         println(status)
-    }*/
+    }
 }

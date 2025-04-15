@@ -10,6 +10,7 @@ import com.auri.core.collection.Collector
 import com.auri.core.collection.CollectorStatus
 import com.auri.core.collection.CollectorStatus.*
 import com.auri.core.collection.RawCollectedSample
+import com.auri.core.common.util.HashAlgorithms
 import com.auri.core.common.util.MagicNumber
 import com.auri.core.common.util.PeriodicActionConfig
 import com.auri.core.common.util.magicNumber
@@ -34,7 +35,10 @@ import java.net.URI
 import java.net.URL
 import java.nio.file.Path
 import java.time.LocalDate
-import kotlin.io.path.*
+import kotlin.io.path.createDirectories
+import kotlin.io.path.deleteIfExists
+import kotlin.io.path.nameWithoutExtension
+import kotlin.io.path.outputStream
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 
@@ -71,15 +75,16 @@ class MalShareCollector(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun start(
-        collectionParameters: Collector.CollectionParameters
+        workingDirectory: Path,
+        checkSampleExistence: suspend (HashAlgorithms, String) -> Boolean
     ): Flow<CollectorStatus> = periodicCollection(
         periodicity = definition.periodicity,
-        collectionParameters = collectionParameters,
-        singleCollection = ::singleSamples
+        singleCollection = { singleSamples(workingDirectory, checkSampleExistence) },
     )
 
     private fun singleSamples(
-        collectionParameters: Collector.CollectionParameters
+        workingDirectory: Path,
+        checkSampleExistence: suspend (HashAlgorithms, String) -> Boolean
     ): Flow<CollectorStatus> = flow {
         emit(Downloading(what = "Latest samples list"))
         val samplesHashes = api.samplesHashes().getOrElse {
@@ -87,25 +92,20 @@ class MalShareCollector(
             return@flow
         }
         Logger.i { "Found ${samplesHashes.size} sample hashes" }
-        emit(Processing(what = "Already downloaded samples"))
-        val alreadyDownloadedSamples = collectionParameters.workingDirectory
-            .listDirectoryEntries()
-            .map { it.name }
-            .toSet()
-        Logger.i { "Found ${alreadyDownloadedSamples.size} already downloaded samples" }
-        val newSamples = samplesHashes.filter { it.sha1 !in alreadyDownloadedSamples }
-        Logger.i { "Found ${newSamples.size} new samples" }
-        samplesHashes.forEach { sampleHashes ->
+        samplesHashes.filterNot {
+            checkSampleExistence(
+                HashAlgorithms.SHA1,
+                it.sha1
+            )
+        }.forEach { sampleHashes ->
             emit(Processing(what = "Sample ${sampleHashes.sha1}"))
-            val destination = collectionParameters.workingDirectory.resolve(sampleHashes.sha1)
-            if (sampleHashes in newSamples) {
-                emit(Downloading(what = "Sample ${sampleHashes.sha1}"))
-                api.downloadSample(sampleHashes, destination).getOrElse {
-                    Logger.e { "Failed to download sample ${sampleHashes.sha1}: $it" }
-                    return@forEach
-                }
-                Logger.i { "Successfully downloaded sample ${sampleHashes.sha1}" }
+            val destination = workingDirectory.resolve(sampleHashes.sha1)
+            emit(Downloading(what = "Sample ${sampleHashes.sha1}"))
+            api.downloadSample(sampleHashes, destination).getOrElse {
+                Logger.e { "Failed to download sample ${sampleHashes.sha1}: $it" }
+                return@forEach
             }
+            Logger.i { "Successfully downloaded sample ${sampleHashes.sha1}" }
             if (destination.magicNumber() !in definition.samplesMagicNumberFilter) {
                 Logger.i { "Skipping sample ${sampleHashes.sha1} because of its magic number" }
                 return@forEach
@@ -116,6 +116,7 @@ class MalShareCollector(
                 executable = destination
             )
             emit(NewSample(rawSample))
+            destination.deleteIfExists()
         }
     }
 

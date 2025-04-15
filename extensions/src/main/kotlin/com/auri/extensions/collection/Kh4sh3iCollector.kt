@@ -14,10 +14,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import java.net.URI
 import java.nio.file.Path
-import kotlin.io.path.isDirectory
-import kotlin.io.path.listDirectoryEntries
-import kotlin.io.path.name
-import kotlin.io.path.walk
+import kotlin.io.path.*
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 
@@ -53,24 +50,33 @@ class Kh4sh3iCollector(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun start(
-        collectionParameters: Collector.CollectionParameters
+        workingDirectory: Path,
+        checkSampleExistence: suspend (HashAlgorithms, String) -> Boolean
     ): Flow<CollectorStatus> = periodicCollection(
         periodicity = definition.periodicity,
-        collectionParameters = collectionParameters,
-        singleCollection = ::singleSamples
+        singleCollection = { singleSamples(workingDirectory) },
     )
 
+    @OptIn(ExperimentalPathApi::class)
     private fun singleSamples(
-        collectionParameters: Collector.CollectionParameters
+        workingDirectory: Path,
     ): Flow<CollectorStatus> = flow {
         emit(Downloading(what = "Repository"))
-        val repoFolder = cloneRepo(
-            workingDirectory = collectionParameters.workingDirectory,
+        val cloneRepoResult = cloneRepo(
+            workingDirectory = workingDirectory,
             gitRepo = definition.gitRepo
         ).getOrElse {
             emit(Failed(what = "Clone repository", why = it))
             return@flow
         }
+        when (cloneRepoResult) {
+            is CloneRepoResult.NotChanged -> {
+                return@flow
+            }
+
+            else -> Unit
+        }
+        val repoFolder = cloneRepoResult.repoFolder
 
         emit(Processing(what = "Extract samples"))
         val extractedSamples = repoFolder.listDirectoryEntries()
@@ -98,6 +104,10 @@ class Kh4sh3iCollector(
             .map { NewSample(it) }
 
         emitAll(rawSamples)
+
+        repoFolder.listDirectoryEntries()
+            .filterNot { it.name.startsWith(".") }
+            .forEach(Path::deleteRecursively)
     }
 
     private fun extractSample(
@@ -111,6 +121,7 @@ class Kh4sh3iCollector(
         }
         Logger.d { "Extracting ${zipFile.name} with password ${definition.samplesPassword}" }
         zipFile.unzip(destinationDirectory = sampleDir, password = definition.samplesPassword)
+        zipFile.deleteExisting()
         Logger.d { "Successfully extracted ${zipFile.name}" }
         Logger.d { "Searching for extracted executable" }
         val executables = sampleDir.walk()

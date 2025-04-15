@@ -23,6 +23,8 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 import java.nio.file.Path
 import java.time.LocalDate
 import kotlin.io.path.*
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 internal class CollectionService(
@@ -80,16 +82,29 @@ internal class CollectionService(
             )
         }
 
+        suspend fun checkSampleExistence(hashAlgorithm: HashAlgorithms, hash: String) =
+            newSuspendedTransaction(context = Dispatchers.IO, db = auriDB) {
+                RawSampleTable.select(RawSampleTable.id)
+                    .where {
+                        when (hashAlgorithm) {
+                            HashAlgorithms.MD5 -> RawSampleTable.md5 eq hash
+                            HashAlgorithms.SHA1 -> RawSampleTable.sha1 eq hash
+                            HashAlgorithms.SHA256 -> RawSampleTable.sha256 eq hash
+                        }
+                    }.empty().not()
+            }
+
         collectors
             .map { collector ->
                 val collectorWorkingDirectory = cacheDir.resolve(collector.name)
                 collectorWorkingDirectory.createDirectories()
                 collector.start(
-                    Collector.CollectionParameters(
-                        workingDirectory = collectorWorkingDirectory
-                    )
+                    workingDirectory = collectorWorkingDirectory,
+                    checkSampleExistence = { hashAlgorithm, hash ->
+                        checkSampleExistence(hashAlgorithm, hash)
+                    }
                 ).map { collector to it }
-            }
+            }.map { it.moveSamples() }
             .merge()
             .onEach { (collector, status) ->
                 updateStatusForCollector(collector, status)
@@ -129,7 +144,7 @@ internal class CollectionService(
                     savedEntity
                 }
                 if (entityAdded == null) return@collect
-                sample.executable.copyTo(sampleFile)
+                sample.executable.moveTo(sampleFile)
                 _collectionStatus.update { currentStatus ->
                     (currentStatus as? CollectionProcessStatus.Collecting)
                         ?.let {
@@ -214,6 +229,20 @@ internal class CollectionService(
                 )
             }
             ?: currentStatus
+    }
+
+    @OptIn(ExperimentalUuidApi::class)
+    private fun Flow<Pair<Collector, CollectorStatus>>.moveSamples() = map { (collector, status) ->
+        if (status !is CollectorStatus.NewSample) return@map collector to status
+        val newSampleName = Uuid.random().toString().replace("-", "_")
+        val newSamplePath = samplesDir.resolve(newSampleName)
+        status.sample.executable.moveTo(newSamplePath)
+        val newStatus = status.copy(
+            sample = status.sample.copy(
+                executable = newSamplePath
+            )
+        )
+        collector to newStatus
     }
 
     private fun RawCollectedSample.hasValidFile(): Boolean {

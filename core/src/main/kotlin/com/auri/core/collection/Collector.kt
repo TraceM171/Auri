@@ -3,6 +3,7 @@ package com.auri.core.collection
 import com.auri.core.common.ExtensionPoint
 import com.auri.core.common.HasDependencies
 import com.auri.core.common.MissingDependency
+import com.auri.core.common.util.HashAlgorithms
 import kotlinx.coroutines.flow.Flow
 import java.nio.file.Path
 
@@ -31,26 +32,18 @@ interface Collector : HasDependencies, AutoCloseable {
     /**
      * Starts the collection process.
      *
-     * @param collectionParameters The parameters for the collection.
+     * @param workingDirectory The directory where the collector may store its data.
+     * @param checkSampleExistence A function that checks if a sample with the given hash already exists and can be skipped.
+     * This can be used by the collector to avoid re-collecting samples that are already present, but it is not mandatory,
+     * as duplicate samples will be filtered out externally.
      * @return A flow of [CollectorStatus] objects that represent changes in the collection status.
      */
     fun start(
-        collectionParameters: CollectionParameters
+        workingDirectory: Path,
+        checkSampleExistence: suspend (hashType: HashAlgorithms, hash: String) -> Boolean,
     ): Flow<CollectorStatus>
 
     override suspend fun checkDependencies(): List<MissingDependency> = emptyList()
 
     override fun close() = Unit
-
-    /**
-     * Parameters for the collection.
-     */
-    data class CollectionParameters(
-        /**
-         * The working directory for the collection.
-         *
-         * Any files that are created during the collection will be created in this directory.
-         */
-        val workingDirectory: Path,
-    )
 }

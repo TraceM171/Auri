@@ -62,24 +62,33 @@ class TheZooCollector(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun start(
-        collectionParameters: Collector.CollectionParameters
+        workingDirectory: Path,
+        checkSampleExistence: suspend (HashAlgorithms, String) -> Boolean
     ): Flow<CollectorStatus> = periodicCollection(
         periodicity = definition.periodicity,
-        collectionParameters = collectionParameters,
-        singleCollection = ::singleSamples
+        singleCollection = { singleSamples(workingDirectory) },
     )
 
+    @OptIn(ExperimentalPathApi::class)
     private fun singleSamples(
-        collectionParameters: Collector.CollectionParameters
+        workingDirectory: Path,
     ): Flow<CollectorStatus> = flow {
         emit(Downloading(what = "Repository"))
-        val repoFolder = cloneRepo(
-            workingDirectory = collectionParameters.workingDirectory,
+        val cloneRepoResult = cloneRepo(
+            workingDirectory = workingDirectory,
             gitRepo = definition.gitRepo
         ).getOrElse {
             emit(Failed(what = "Clone repository", why = it))
             return@flow
         }
+        when (cloneRepoResult) {
+            is CloneRepoResult.NotChanged -> {
+                return@flow
+            }
+
+            else -> Unit
+        }
+        val repoFolder = cloneRepoResult.repoFolder
 
         emit(Processing(what = "Query samples"))
         val theZooDB = repoFolder.resolve("conf/maldb.db").let(::sqliteConnection)
@@ -107,6 +116,10 @@ class TheZooCollector(
             .map { NewSample(it) }
 
         emitAll(rawSamples)
+
+        repoFolder.listDirectoryEntries()
+            .filterNot { it.name.startsWith(".") }
+            .forEach(Path::deleteRecursively)
     }
 
     private suspend fun Database.getMalwareSamples(): List<MalwareEntity> {
@@ -138,6 +151,7 @@ class TheZooCollector(
         }
         Logger.d { "Extracting ${zipFile.name} with password $pass" }
         zipFile.unzip(destinationDirectory = sampleDir, password = pass)
+        zipFile.deleteExisting()
         Logger.d { "Successfully extracted ${zipFile.name}" }
         Logger.d { "Searching for extracted executable" }
         val executables = sampleDir.walk()

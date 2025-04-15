@@ -1,6 +1,5 @@
 package com.auri.extensions.collection.common
 
-import com.auri.core.collection.Collector
 import com.auri.core.collection.CollectorStatus
 import com.auri.core.collection.CollectorStatus.*
 import com.auri.core.common.util.PeriodicActionConfig
@@ -10,10 +9,9 @@ import kotlinx.datetime.Clock
 
 fun periodicCollection(
     periodicity: PeriodicActionConfig?,
-    collectionParameters: Collector.CollectionParameters,
-    singleCollection: (collectionParameters: Collector.CollectionParameters) -> Flow<CollectorStatus>
+    singleCollection: () -> Flow<CollectorStatus>
 ): Flow<CollectorStatus> = flow {
-    val safeCollectorFlow = singleCollection(collectionParameters)
+    val safeCollectorFlow = singleCollection()
         .catch {
             emit(Failed(what = "Collecting samples", why = it.message ?: "Unknown error"))
         }.onCompletion {
