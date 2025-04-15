@@ -283,18 +283,27 @@ internal class AnalysisService(
             }
             val detectionStart = TimeSource.Monotonic.markNow()
             val changeReport = withTimeoutOrNull(markAsInactiveAfter) {
+                var lostAccessCount = 0
                 Schedule.spaced<Unit>(analyzeEvery).retryEither {
                     analyzers.forEach { analyzer ->
                         Logger.d { "Analyzing with ${analyzer.name}" }
-                        analyzer.reportChanges(cacheDir, vmInteraction).getOrNull().let {
-                            Logger.d { "Analyzer ${analyzer.name} finished: $it" }
-                            it?.extended
-                        }?.takeIf { it.changeFound }?.let { return@withTimeoutOrNull it }
+                        val report = analyzer.reportChanges(cacheDir, vmInteraction)
+                            .getOrElse { ChangeReport.NotChanged }
+                        Logger.d { "Analyzer ${analyzer.name} finished: $report" }
+                        when (report) {
+                            is ChangeReport.NotChanged -> Unit
+                            is ChangeReport.Changed -> return@withTimeoutOrNull report
+                            is ChangeReport.AccessLost -> {
+                                lostAccessCount++
+                                if (lostAccessCount >= 3) return@withTimeoutOrNull report
+                            }
+                        }
                     }
                     Unit.left()
                 }
-                null
-            } ?: ChangeReport.NotChanged.extended
+                if (lostAccessCount > 0) ChangeReport.AccessLost
+                else ChangeReport.NotChanged
+            }?.extended ?: ChangeReport.NotChanged.extended
             val detectionTime = detectionStart.elapsedNow()
             Logger.d { "Analysis for sample ${entity.name} finished, changes detected: $changeReport" }
             _analysisStatus.update {
