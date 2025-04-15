@@ -8,6 +8,7 @@ import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.terminal
 import com.github.ajalt.mordant.rendering.TextColors
 import com.github.ajalt.mordant.rendering.Whitespace
+import com.github.ajalt.mordant.table.ColumnWidth
 import com.github.ajalt.mordant.table.VerticalLayoutBuilder
 import com.github.ajalt.mordant.table.grid
 import com.github.ajalt.mordant.table.horizontalLayout
@@ -222,6 +223,9 @@ private fun VerticalLayoutBuilder.livenessStatsTui(livenessStats: LivenessProces
             }
     cell(
         grid {
+            column(1) {
+                this.width = ColumnWidth(priority = 1)
+            }
             row {
                 cell(Text("Alive samples"))
                 cell(Text("$aliveSamples (${"%.2f".format(alivePercent)}% of analyzed samples)"))
