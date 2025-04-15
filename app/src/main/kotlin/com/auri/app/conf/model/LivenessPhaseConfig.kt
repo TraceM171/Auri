@@ -10,7 +10,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 
-internal data class AnalysisPhaseConfig(
+internal data class LivenessPhaseConfig(
     val sampleExecutionPath: Path,
     val vmManager: VMManager,
     val vmInteraction: VMInteraction,

@@ -1,4 +1,4 @@
-package com.auri.app.analysis
+package com.auri.app.liveness
 
 import arrow.core.Nel
 import com.auri.core.analysis.Analyzer
@@ -6,17 +6,17 @@ import com.auri.core.analysis.ChangeReport
 import com.auri.core.common.MissingDependency
 import kotlinx.datetime.Instant
 
-sealed interface AnalysisProcessStatus {
-    data object NotStarted : AnalysisProcessStatus
-    data object Initializing : AnalysisProcessStatus
-    data class Failed(val what: String, val why: String) : AnalysisProcessStatus
+sealed interface LivenessProcessStatus {
+    data object NotStarted : LivenessProcessStatus
+    data object Initializing : LivenessProcessStatus
+    data class Failed(val what: String, val why: String) : LivenessProcessStatus
     data class MissingDependencies(
         val missingDependencies: Map<Analyzer, Nel<MissingDependency>>
-    ) : AnalysisProcessStatus
+    ) : LivenessProcessStatus
 
     data class CapturingGoodState(
         val step: Step,
-    ) : AnalysisProcessStatus {
+    ) : LivenessProcessStatus {
         sealed interface Step {
             data object StartingVM : Step
             data class Capturing(val analyzer: Analyzer) : Step
@@ -26,8 +26,8 @@ sealed interface AnalysisProcessStatus {
 
     data class Analyzing(
         val runningNow: RunningNow?,
-        val analysisStats: AnalysisStats
-    ) : AnalysisProcessStatus {
+        val livenessStats: LivenessStats
+    ) : LivenessProcessStatus {
         data class RunningNow(
             val sampleId: Int,
             val step: Step,
@@ -44,11 +44,11 @@ sealed interface AnalysisProcessStatus {
     }
 
     data class Finished(
-        val analysisStats: AnalysisStats
-    ) : AnalysisProcessStatus
+        val livenessStats: LivenessStats
+    ) : LivenessProcessStatus
 
 
-    data class AnalysisStats(
+    data class LivenessStats(
         val samplesStatus: Map<Int, ExtendedChangeReport>,
         val totalSamplesAnalyzed: Int,
         val totalSamples: Int

@@ -19,7 +19,7 @@ private class Auri : SuspendingNoOpCliktCommand() {
     """.trimIndent()
 
     init {
-        subcommands(Collection(), Analysis())
+        subcommands(Collection(), Liveness())
         context {
             helpFormatter = { MordantHelpFormatter(it, showDefaultValues = true) }
         }

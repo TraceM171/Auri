@@ -1,4 +1,4 @@
-package com.auri.app.analysis
+package com.auri.app.liveness
 
 import arrow.core.Either
 import arrow.core.getOrElse
@@ -38,7 +38,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
-internal class AnalysisService(
+internal class LivenessService(
     private val cacheDir: Path,
     private val samplesDir: Path,
     private val auriDB: Database,
@@ -51,17 +51,17 @@ internal class AnalysisService(
     private val analyzeEvery: Duration,
     private val keepListening: KeepListening?
 ) {
-    private val _analysisStatus: MutableStateFlow<AnalysisProcessStatus> =
-        MutableStateFlow(AnalysisProcessStatus.NotStarted)
+    private val _analysisStatus: MutableStateFlow<LivenessProcessStatus> =
+        MutableStateFlow(LivenessProcessStatus.NotStarted)
     val analysisStatus = _analysisStatus.asStateFlow()
 
     suspend fun run() {
-        _analysisStatus.update { AnalysisProcessStatus.Initializing }
+        _analysisStatus.update { LivenessProcessStatus.Initializing }
         val missingDependencies = analyzers.parMapNotNull { analyzer ->
             analyzer.checkDependencies().toNonEmptyListOrNull()?.let { analyzer to it }
         }.associate { it }
         if (missingDependencies.isNotEmpty()) {
-            _analysisStatus.update { AnalysisProcessStatus.MissingDependencies(missingDependencies) }
+            _analysisStatus.update { LivenessProcessStatus.MissingDependencies(missingDependencies) }
             return
         }
         val samplesFilterQuery = notExists(
@@ -81,7 +81,7 @@ internal class AnalysisService(
             keepListening = keepListening
         )
 
-        _analysisStatus.update { AnalysisProcessStatus.CapturingGoodState(AnalysisProcessStatus.CapturingGoodState.Step.StartingVM) }
+        _analysisStatus.update { LivenessProcessStatus.CapturingGoodState(LivenessProcessStatus.CapturingGoodState.Step.StartingVM) }
         retryingOperation {
             vmManager.launchVM()
                 .ctx("Launching VM")
@@ -90,7 +90,7 @@ internal class AnalysisService(
         }.onLeftLog()
             .getOrElse { error ->
                 _analysisStatus.update {
-                    AnalysisProcessStatus.Failed(
+                    LivenessProcessStatus.Failed(
                         what = "launch VM",
                         why = error.messageWithCtx ?: "Unknown"
                     )
@@ -103,7 +103,7 @@ internal class AnalysisService(
             .onLeftLog()
             .getOrElse { error ->
                 _analysisStatus.update {
-                    AnalysisProcessStatus.Failed(
+                    LivenessProcessStatus.Failed(
                         what = "wait for VM",
                         why = error.messageWithCtx ?: "Unknown"
                     )
@@ -113,8 +113,8 @@ internal class AnalysisService(
         Logger.d { "VM is ready" }
         analyzers.forEach { analyzer ->
             _analysisStatus.update {
-                AnalysisProcessStatus.CapturingGoodState(
-                    AnalysisProcessStatus.CapturingGoodState.Step.Capturing(
+                LivenessProcessStatus.CapturingGoodState(
+                    LivenessProcessStatus.CapturingGoodState.Step.Capturing(
                         analyzer
                     )
                 )
@@ -126,7 +126,7 @@ internal class AnalysisService(
                 .onLeftLog()
                 .getOrElse { error ->
                     _analysisStatus.update {
-                        AnalysisProcessStatus.Failed(
+                        LivenessProcessStatus.Failed(
                             what = "capture initial state by analyzer ${analyzer.name}",
                             why = error.messageWithCtx ?: "Unknown"
                         )
@@ -135,7 +135,7 @@ internal class AnalysisService(
                 }
         }
         Logger.d { "Captured initial state" }
-        _analysisStatus.update { AnalysisProcessStatus.CapturingGoodState(AnalysisProcessStatus.CapturingGoodState.Step.StoppingVM) }
+        _analysisStatus.update { LivenessProcessStatus.CapturingGoodState(LivenessProcessStatus.CapturingGoodState.Step.StoppingVM) }
         Logger.d { "Stopping VM" }
         retryingOperation {
             vmManager.stopVM()
@@ -145,7 +145,7 @@ internal class AnalysisService(
         }.onLeftLog()
             .getOrElse { error ->
                 _analysisStatus.update {
-                    AnalysisProcessStatus.Failed(
+                    LivenessProcessStatus.Failed(
                         what = "stop VM",
                         why = error.messageWithCtx ?: "Unknown"
                     )
@@ -156,9 +156,9 @@ internal class AnalysisService(
         Logger.d { "Initial state captured" }
 
         _analysisStatus.update {
-            AnalysisProcessStatus.Analyzing(
+            LivenessProcessStatus.Analyzing(
                 runningNow = null,
-                AnalysisProcessStatus.AnalysisStats(
+                LivenessProcessStatus.LivenessStats(
                     samplesStatus = emptyMap(),
                     totalSamplesAnalyzed = 0,
                     totalSamples = getTotalSamples()
@@ -170,11 +170,11 @@ internal class AnalysisService(
             Logger.d { "Starting analysis for sample ${entity.name}" }
             val samplePath = samplesDir.resolve(entity.path)
             _analysisStatus.update {
-                val analyzingOrNull = (it as? AnalysisProcessStatus.Analyzing ?: return@update it)
+                val analyzingOrNull = (it as? LivenessProcessStatus.Analyzing ?: return@update it)
                 analyzingOrNull.copy(
-                    runningNow = AnalysisProcessStatus.Analyzing.RunningNow(
+                    runningNow = LivenessProcessStatus.Analyzing.RunningNow(
                         sampleId = entity.id.value,
-                        step = AnalysisProcessStatus.Analyzing.RunningNow.Step.StartingVM
+                        step = LivenessProcessStatus.Analyzing.RunningNow.Step.StartingVM
                     )
                 )
             }
@@ -186,7 +186,7 @@ internal class AnalysisService(
             }.onLeftLog()
                 .getOrElse { error ->
                     _analysisStatus.update {
-                        AnalysisProcessStatus.Failed(
+                        LivenessProcessStatus.Failed(
                             what = "launch VM",
                             why = error.messageWithCtx ?: "Unknown"
                         )
@@ -202,7 +202,7 @@ internal class AnalysisService(
                 .onLeftLog()
                 .getOrElse { error ->
                     _analysisStatus.update {
-                        AnalysisProcessStatus.Failed(
+                        LivenessProcessStatus.Failed(
                             what = "wait for VM",
                             why = error.messageWithCtx ?: "Unknown"
                         )
@@ -212,10 +212,10 @@ internal class AnalysisService(
                 }
             Logger.d { "VM is ready" }
             _analysisStatus.update {
-                val analyzingOrNull = (it as? AnalysisProcessStatus.Analyzing ?: return@update it)
+                val analyzingOrNull = (it as? LivenessProcessStatus.Analyzing ?: return@update it)
                 analyzingOrNull.copy(
                     runningNow = analyzingOrNull.runningNow!!.copy(
-                        step = AnalysisProcessStatus.Analyzing.RunningNow.Step.SendingSample
+                        step = LivenessProcessStatus.Analyzing.RunningNow.Step.SendingSample
                     )
                 )
             }
@@ -225,7 +225,7 @@ internal class AnalysisService(
                 .onLeftLog()
                 .getOrElse { error ->
                     _analysisStatus.update {
-                        AnalysisProcessStatus.Failed(
+                        LivenessProcessStatus.Failed(
                             what = "send file",
                             why = error.messageWithCtx ?: "Unknown"
                         )
@@ -235,10 +235,10 @@ internal class AnalysisService(
                 }
             Logger.d { "Sent file" }
             _analysisStatus.update {
-                val analyzingOrNull = (it as? AnalysisProcessStatus.Analyzing ?: return@update it)
+                val analyzingOrNull = (it as? LivenessProcessStatus.Analyzing ?: return@update it)
                 analyzingOrNull.copy(
                     runningNow = analyzingOrNull.runningNow!!.copy(
-                        step = AnalysisProcessStatus.Analyzing.RunningNow.Step.LaunchingSampleProcess
+                        step = LivenessProcessStatus.Analyzing.RunningNow.Step.LaunchingSampleProcess
                     )
                 )
             }
@@ -248,7 +248,7 @@ internal class AnalysisService(
                 .ctx("Analyzing sample ${entity.name}")
                 .getOrElse { error ->
                     _analysisStatus.update {
-                        AnalysisProcessStatus.Failed(
+                        LivenessProcessStatus.Failed(
                             what = "prepare command",
                             why = error.messageWithCtx ?: "Unknown"
                         )
@@ -262,7 +262,7 @@ internal class AnalysisService(
                 .ctx("Analyzing sample ${entity.name}")
                 .getOrElse { error ->
                     _analysisStatus.update {
-                        AnalysisProcessStatus.Failed(
+                        LivenessProcessStatus.Failed(
                             what = "run command",
                             why = error.messageWithCtx ?: "Unknown"
                         )
@@ -272,10 +272,10 @@ internal class AnalysisService(
                 }
             Logger.d { "Ran file" }
             _analysisStatus.update {
-                val analyzingOrNull = (it as? AnalysisProcessStatus.Analyzing ?: return@update it)
+                val analyzingOrNull = (it as? LivenessProcessStatus.Analyzing ?: return@update it)
                 analyzingOrNull.copy(
                     runningNow = analyzingOrNull.runningNow!!.copy(
-                        step = AnalysisProcessStatus.Analyzing.RunningNow.Step.WaitingChanges(
+                        step = LivenessProcessStatus.Analyzing.RunningNow.Step.WaitingChanges(
                             sampleTimeout = Clock.System.now() + markAsInactiveAfter
                         )
                     )
@@ -307,10 +307,10 @@ internal class AnalysisService(
             val detectionTime = detectionStart.elapsedNow()
             Logger.d { "Analysis for sample ${entity.name} finished, changes detected: $changeReport" }
             _analysisStatus.update {
-                val analyzingOrNull = (it as? AnalysisProcessStatus.Analyzing ?: return@update it)
+                val analyzingOrNull = (it as? LivenessProcessStatus.Analyzing ?: return@update it)
                 analyzingOrNull.copy(
                     runningNow = analyzingOrNull.runningNow!!.copy(
-                        step = AnalysisProcessStatus.Analyzing.RunningNow.Step.SavingResults
+                        step = LivenessProcessStatus.Analyzing.RunningNow.Step.SavingResults
                     )
                 )
             }
@@ -324,10 +324,10 @@ internal class AnalysisService(
                 }
             }
             _analysisStatus.update {
-                val analyzingOrNull = (it as? AnalysisProcessStatus.Analyzing ?: return@update it)
+                val analyzingOrNull = (it as? LivenessProcessStatus.Analyzing ?: return@update it)
                 analyzingOrNull.copy(
                     runningNow = analyzingOrNull.runningNow!!.copy(
-                        step = AnalysisProcessStatus.Analyzing.RunningNow.Step.StoppingVM
+                        step = LivenessProcessStatus.Analyzing.RunningNow.Step.StoppingVM
                     )
                 )
             }
@@ -339,7 +339,7 @@ internal class AnalysisService(
             }.onLeftLog()
                 .getOrElse { error ->
                     _analysisStatus.update {
-                        AnalysisProcessStatus.Failed(
+                        LivenessProcessStatus.Failed(
                             what = "stop VM",
                             why = error.messageWithCtx ?: "Unknown"
                         )
@@ -349,14 +349,14 @@ internal class AnalysisService(
                 }
             Logger.d { "Stopped VM" }
             _analysisStatus.update {
-                val analyzingOrNull = (it as? AnalysisProcessStatus.Analyzing ?: return@update it)
+                val analyzingOrNull = (it as? LivenessProcessStatus.Analyzing ?: return@update it)
                 analyzingOrNull.copy(
                     runningNow = null,
-                    analysisStats = analyzingOrNull.analysisStats.copy(
-                        samplesStatus = analyzingOrNull.analysisStats.samplesStatus + mapOf(
+                    livenessStats = analyzingOrNull.livenessStats.copy(
+                        samplesStatus = analyzingOrNull.livenessStats.samplesStatus + mapOf(
                             entity.id.value to changeReport
                         ),
-                        totalSamplesAnalyzed = analyzingOrNull.analysisStats.totalSamplesAnalyzed + 1,
+                        totalSamplesAnalyzed = analyzingOrNull.livenessStats.totalSamplesAnalyzed + 1,
                         totalSamples = getTotalSamples()
                     )
                 )
@@ -366,9 +366,9 @@ internal class AnalysisService(
         if (collectionError) return
         Logger.i { "Analysis finished" }
         _analysisStatus.update {
-            val analyzingOrNull = (it as? AnalysisProcessStatus.Analyzing ?: return@update it).analysisStats
-            AnalysisProcessStatus.Finished(
-                AnalysisProcessStatus.AnalysisStats(
+            val analyzingOrNull = (it as? LivenessProcessStatus.Analyzing ?: return@update it).livenessStats
+            LivenessProcessStatus.Finished(
+                LivenessProcessStatus.LivenessStats(
                     samplesStatus = analyzingOrNull.samplesStatus,
                     totalSamplesAnalyzed = analyzingOrNull.totalSamplesAnalyzed,
                     totalSamples = analyzingOrNull.totalSamples
@@ -385,7 +385,7 @@ internal class AnalysisService(
         }
 
     private val ChangeReport.extended
-        get() = AnalysisProcessStatus.ExtendedChangeReport(
+        get() = LivenessProcessStatus.ExtendedChangeReport(
             changeFound = when (this) {
                 is ChangeReport.NotChanged -> false
                 is ChangeReport.Changed -> true

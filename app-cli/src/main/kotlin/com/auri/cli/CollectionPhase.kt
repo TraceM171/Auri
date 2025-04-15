@@ -145,12 +145,12 @@ private fun VerticalLayoutBuilder.tui(
             CollectionProcessStatus.NotStarted -> return@run
         }
         cell("")
-        analysisStatsTui(collectionStats)
+        livenessStatsTui(collectionStats)
         cell("")
     }
 }
 
-private fun VerticalLayoutBuilder.analysisStatsTui(collectionStats: CollectionProcessStatus.CollectionStats) {
+private fun VerticalLayoutBuilder.livenessStatsTui(collectionStats: CollectionProcessStatus.CollectionStats) {
     cell(table {
         borderType = BorderType.SQUARE_DOUBLE_SECTION_SEPARATOR
         tableBorders = Borders.ALL

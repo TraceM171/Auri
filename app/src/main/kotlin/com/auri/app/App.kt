@@ -7,8 +7,6 @@ import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import co.touchlab.kermit.io.RollingFileLogWriter
 import co.touchlab.kermit.io.RollingFileLogWriterConfig
-import com.auri.app.analysis.AnalysisProcessStatus
-import com.auri.app.analysis.AnalysisService
 import com.auri.app.collection.CollectionProcessStatus
 import com.auri.app.collection.CollectionService
 import com.auri.app.common.DefaultMessageFormatter
@@ -18,9 +16,11 @@ import com.auri.app.common.data.entity.SampleLivenessCheckTable
 import com.auri.app.common.data.sqliteConnection
 import com.auri.app.common.withExtensions
 import com.auri.app.conf.configByPrefix
-import com.auri.app.conf.model.AnalysisPhaseConfig
 import com.auri.app.conf.model.CollectionPhaseConfig
+import com.auri.app.conf.model.LivenessPhaseConfig
 import com.auri.app.conf.model.MainConf
+import com.auri.app.liveness.LivenessProcessStatus
+import com.auri.app.liveness.LivenessService
 import com.auri.core.analysis.Analyzer
 import com.auri.core.collection.Collector
 import com.auri.core.collection.InfoProvider
@@ -104,23 +104,23 @@ suspend fun CoroutineScope.launchSampleCollection(
     }
 }
 
-suspend fun CoroutineScope.launchSampleAnalysis(
+suspend fun CoroutineScope.launchLivenessAnalysis(
     baseDirectory: Path,
     runbook: Path,
     minLogSeverity: Severity,
     pruneCache: Boolean,
     streamed: Boolean
-): Flow<AnalysisProcessStatus> {
+): Flow<LivenessProcessStatus> {
     val initContext = init(
         baseDirectory = baseDirectory,
         runbook = runbook,
-        actionName = "analysis",
+        actionName = "liveness",
         minLogSeverity = minLogSeverity,
         pruneCache = pruneCache
     ).getOrElse {
         return when (it) {
             is InitError.GettingMainConfig -> flowOf(
-                AnalysisProcessStatus.Failed(
+                LivenessProcessStatus.Failed(
                     what = "Failed to load main segment of runbook",
                     why = it.cause.messageWithCtx ?: "Unknown error"
                 )
@@ -128,19 +128,19 @@ suspend fun CoroutineScope.launchSampleAnalysis(
         }
     }
 
-    val phaseConfig = runbook.configByPrefix<AnalysisPhaseConfig>(
+    val phaseConfig = runbook.configByPrefix<LivenessPhaseConfig>(
         classLoader = initContext.classLoader,
-        prefix = "analysisPhase"
+        prefix = "livenessPhase"
     ).getOrElse {
         return flowOf(
-            AnalysisProcessStatus.Failed(
-                what = "loading analysis phase segment of runbook",
+            LivenessProcessStatus.Failed(
+                what = "loading liveness phase segment of runbook",
                 why = it.messageWithCtx ?: "Unknown error"
             )
         )
     }
 
-    val analysisService = AnalysisService(
+    val livenessService = LivenessService(
         cacheDir = initContext.cacheDir,
         samplesDir = initContext.samplesDir,
         auriDB = initContext.auriDB,
@@ -153,21 +153,21 @@ suspend fun CoroutineScope.launchSampleAnalysis(
         analyzeEvery = phaseConfig.analyzeEvery,
         keepListening = phaseConfig.keepListening.takeIf { streamed },
     )
-    val job = launch { analysisService.run() }
+    val job = launch { livenessService.run() }
 
 
-    return analysisService.analysisStatus.transformWhile {
+    return livenessService.analysisStatus.transformWhile {
         emit(it)
 
         when (it) {
-            is AnalysisProcessStatus.Analyzing,
-            AnalysisProcessStatus.Initializing,
-            is AnalysisProcessStatus.CapturingGoodState,
-            AnalysisProcessStatus.NotStarted -> true
+            is LivenessProcessStatus.Analyzing,
+            LivenessProcessStatus.Initializing,
+            is LivenessProcessStatus.CapturingGoodState,
+            LivenessProcessStatus.NotStarted -> true
 
-            is AnalysisProcessStatus.Finished,
-            is AnalysisProcessStatus.MissingDependencies,
-            is AnalysisProcessStatus.Failed -> false
+            is LivenessProcessStatus.Finished,
+            is LivenessProcessStatus.MissingDependencies,
+            is LivenessProcessStatus.Failed -> false
         }
     }.onCompletion {
         job.cancel()

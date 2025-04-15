@@ -1,7 +1,7 @@
 package com.auri.cli
 
-import com.auri.app.analysis.AnalysisProcessStatus
-import com.auri.app.launchSampleAnalysis
+import com.auri.app.launchLivenessAnalysis
+import com.auri.app.liveness.LivenessProcessStatus
 import com.auri.cli.common.*
 import com.github.ajalt.clikt.command.SuspendingCliktCommand
 import com.github.ajalt.clikt.core.Context
@@ -18,9 +18,9 @@ import kotlinx.datetime.Clock
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.seconds
 
-class Analysis : SuspendingCliktCommand(name = "analysis") {
+class Liveness : SuspendingCliktCommand(name = "liveness") {
     private val phaseDescription = """
-        The Analysis Phase is the second phase of the AURI pipeline. It is responsible for obtaining information about collected samples, uses multiple sources and runs dynamic execution checks to also ensure liveness of samples.
+        The Liveness Phase is the second phase of the AURI pipeline. It is responsible for obtaining liveness status about collected samples, uses multiple sources via dynamic execution.
     """.trimIndent()
 
     override fun help(context: Context): String = phaseDescription
@@ -32,7 +32,7 @@ class Analysis : SuspendingCliktCommand(name = "analysis") {
     private val streamed: Boolean by streamed()
 
     override suspend fun run(): Unit = coroutineScope {
-        val analysisProcessStatus = launchSampleAnalysis(
+        val livenessProcessStatus = launchLivenessAnalysis(
             baseDirectory = baseDirectory,
             runbook = runbook,
             pruneCache = pruneCache,
@@ -40,48 +40,48 @@ class Analysis : SuspendingCliktCommand(name = "analysis") {
             streamed = streamed
         )
         terminal.baseAuriTui(
-            phaseTitle = analysisPhaseTitle(),
+            phaseTitle = livenessPhaseTitle(),
             phaseDescription = phaseDescription,
-            phaseData = analysisProcessStatus,
+            phaseData = livenessProcessStatus,
             phaseTui = VerticalLayoutBuilder::tui
         )
     }
 }
 
 private fun VerticalLayoutBuilder.tui(
-    processStatus: AnalysisProcessStatus
+    processStatus: LivenessProcessStatus
 ) {
     when (processStatus) {
-        AnalysisProcessStatus.NotStarted -> {
+        LivenessProcessStatus.NotStarted -> {
             cell("Not started") {
                 style(bold = true)
             }
-            cell(Text("The analysis will begin shortly", whitespace = Whitespace.PRE_WRAP))
+            cell(Text("The liveness analysis will begin shortly", whitespace = Whitespace.PRE_WRAP))
         }
 
-        AnalysisProcessStatus.Initializing -> {
+        LivenessProcessStatus.Initializing -> {
             cell("Initializing") {
                 style(bold = true)
             }
-            cell(Text("Performing phase initialization tasks", whitespace = Whitespace.PRE_WRAP))
+            cell(Text("Performing liveness analysis initialization tasks", whitespace = Whitespace.PRE_WRAP))
         }
 
-        is AnalysisProcessStatus.CapturingGoodState -> {
+        is LivenessProcessStatus.CapturingGoodState -> {
             cell(Text("Capturing good state", whitespace = Whitespace.PRE_WRAP)) {
                 style(bold = true)
             }
             cell(
                 Text(
                     """
-                        The analysis is capturing the good state of the system, this is done by running the analyzers on a fresh virtual machine snapshot, without any malware.
+                        The liveness analysis is capturing the good state of the system, this is done by running the analyzers on a fresh virtual machine snapshot, without any malware.
                     """.trimIndent(),
                     whitespace = Whitespace.PRE_WRAP
                 )
             )
             val subStepText = when (val subStep = processStatus.step) {
-                AnalysisProcessStatus.CapturingGoodState.Step.StartingVM -> "Starting VM"
-                is AnalysisProcessStatus.CapturingGoodState.Step.Capturing -> "Capturing for ${subStep.analyzer.name}"
-                AnalysisProcessStatus.CapturingGoodState.Step.StoppingVM -> "Stopping VM"
+                LivenessProcessStatus.CapturingGoodState.Step.StartingVM -> "Starting VM"
+                is LivenessProcessStatus.CapturingGoodState.Step.Capturing -> "Capturing for ${subStep.analyzer.name}"
+                LivenessProcessStatus.CapturingGoodState.Step.StoppingVM -> "Stopping VM"
             }
             cell("")
             cell(Text(subStepText, whitespace = Whitespace.PRE_WRAP)) {
@@ -90,7 +90,7 @@ private fun VerticalLayoutBuilder.tui(
             cell("")
         }
 
-        is AnalysisProcessStatus.Analyzing -> {
+        is LivenessProcessStatus.Analyzing -> {
             cell("Analyzing") {
                 style(bold = true)
             }
@@ -98,29 +98,29 @@ private fun VerticalLayoutBuilder.tui(
                 Text(
                     """
                         The samples are being analyzed and its status is shown in the table bellow.
-                        If streaming is enabled, the analysis will continue indefinitely, in this case the phase can be ended by pressing [^C] when the user desires, results are saved on receive, so none will be lost by ending forcefully.
+                        If streaming is enabled, the liveness analysis will continue indefinitely, in this case the phase can be ended by pressing [^C] when the user desires, results are saved on receive, so none will be lost by ending forcefully.
                     """.trimIndent(),
                     whitespace = Whitespace.PRE_WRAP
                 )
             )
             processStatus.runningNow?.let { runningNow ->
                 val (_, subStepName) = when (val runningNowStep = runningNow.step) {
-                    AnalysisProcessStatus.Analyzing.RunningNow.Step.StartingVM ->
+                    LivenessProcessStatus.Analyzing.RunningNow.Step.StartingVM ->
                         1 to "Starting VM"
 
-                    AnalysisProcessStatus.Analyzing.RunningNow.Step.SendingSample ->
+                    LivenessProcessStatus.Analyzing.RunningNow.Step.SendingSample ->
                         2 to "Sending sample to VM"
 
-                    AnalysisProcessStatus.Analyzing.RunningNow.Step.LaunchingSampleProcess ->
+                    LivenessProcessStatus.Analyzing.RunningNow.Step.LaunchingSampleProcess ->
                         3 to "Launching sample process in VM"
 
-                    is AnalysisProcessStatus.Analyzing.RunningNow.Step.WaitingChanges ->
+                    is LivenessProcessStatus.Analyzing.RunningNow.Step.WaitingChanges ->
                         4 to "Waiting for changes in VM (timeout in ${(runningNowStep.sampleTimeout - Clock.System.now()).inWholeSeconds.seconds})"
 
-                    AnalysisProcessStatus.Analyzing.RunningNow.Step.SavingResults ->
+                    LivenessProcessStatus.Analyzing.RunningNow.Step.SavingResults ->
                         5 to "Saving results"
 
-                    AnalysisProcessStatus.Analyzing.RunningNow.Step.StoppingVM ->
+                    LivenessProcessStatus.Analyzing.RunningNow.Step.StoppingVM ->
                         6 to "Stopping VM"
                 }
                 cell("")
@@ -137,14 +137,14 @@ private fun VerticalLayoutBuilder.tui(
             }
         }
 
-        is AnalysisProcessStatus.Finished -> {
+        is LivenessProcessStatus.Finished -> {
             cell("Finished") {
                 style(bold = true)
             }
             cell(
                 Text(
                     """
-                        The analysis has finished because all the samples have been analyzed and streaming is not enabled.
+                        The liveness analysis has finished because all the samples have been analyzed and streaming is not enabled.
                         All results have been saved.
                     """.trimIndent(),
                     whitespace = Whitespace.PRE_WRAP
@@ -152,7 +152,7 @@ private fun VerticalLayoutBuilder.tui(
             )
         }
 
-        is AnalysisProcessStatus.MissingDependencies -> {
+        is LivenessProcessStatus.MissingDependencies -> {
             cell(Text("Some needed dependencies are missing", whitespace = Whitespace.PRE_WRAP)) {
                 style(bold = true, color = TextColors.brightRed)
             }
@@ -178,7 +178,7 @@ private fun VerticalLayoutBuilder.tui(
             }
         }
 
-        is AnalysisProcessStatus.Failed -> {
+        is LivenessProcessStatus.Failed -> {
             cell("Failed") {
                 style(bold = true, color = TextColors.brightRed)
             }
@@ -193,25 +193,25 @@ private fun VerticalLayoutBuilder.tui(
         }
     }
     run {
-        val analysisStats = when (processStatus) {
-            is AnalysisProcessStatus.Analyzing -> processStatus.analysisStats
-            is AnalysisProcessStatus.Finished -> processStatus.analysisStats
-            is AnalysisProcessStatus.Failed,
-            is AnalysisProcessStatus.CapturingGoodState,
-            AnalysisProcessStatus.Initializing,
-            is AnalysisProcessStatus.MissingDependencies,
-            AnalysisProcessStatus.NotStarted -> return@run
+        val livenessStats = when (processStatus) {
+            is LivenessProcessStatus.Analyzing -> processStatus.livenessStats
+            is LivenessProcessStatus.Finished -> processStatus.livenessStats
+            is LivenessProcessStatus.Failed,
+            is LivenessProcessStatus.CapturingGoodState,
+            LivenessProcessStatus.Initializing,
+            is LivenessProcessStatus.MissingDependencies,
+            LivenessProcessStatus.NotStarted -> return@run
         }
         cell("")
-        analysisStatsTui(analysisStats)
+        livenessStatsTui(livenessStats)
         cell("")
     }
 }
 
-private fun VerticalLayoutBuilder.analysisStatsTui(analysisStats: AnalysisProcessStatus.AnalysisStats) {
-    val aliveSamples = analysisStats.samplesStatus.count { it.value.changeFound }
+private fun VerticalLayoutBuilder.livenessStatsTui(livenessStats: LivenessProcessStatus.LivenessStats) {
+    val aliveSamples = livenessStats.samplesStatus.count { it.value.changeFound }
     val alivePercent =
-        (aliveSamples.toFloat() / analysisStats.totalSamplesAnalyzed * 100)
+        (aliveSamples.toFloat() / livenessStats.totalSamplesAnalyzed * 100)
             .let {
                 when {
                     it.isNaN() -> 0f
@@ -228,15 +228,15 @@ private fun VerticalLayoutBuilder.analysisStatsTui(analysisStats: AnalysisProces
             }
             row {
                 cell(Text("Analyzed samples"))
-                cell(Text("${analysisStats.totalSamplesAnalyzed} (${analysisStats.totalSamples} samples left)"))
+                cell(Text("${livenessStats.totalSamplesAnalyzed} (${livenessStats.totalSamples} samples left)"))
             }
         }
     )
 }
 
-private fun analysisPhaseTitle() =
+private fun livenessPhaseTitle() =
     """
-____ _  _ ____ _   _   _ ____ _ ____ 
-|__| |\ | |__| |    \_/  [__  | [__  
-|  | | \| |  | |___  |   ___] | ___]
+_    _ _  _ ____ _  _ ____ ____ ____ 
+|    | |  | |___ |\ | |___ [__  [__  
+|___ |  \/  |___ | \| |___ ___] ___]
 """

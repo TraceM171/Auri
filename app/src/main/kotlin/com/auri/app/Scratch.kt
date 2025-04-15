@@ -9,7 +9,7 @@ fun main(): Unit = runBlocking {
     val baseDirectory = Path("/home/auri/TFM/auri/scratch/.auri")
     val runbook = Path("/home/auri/TFM/auri/scratch/runbook.yml")
 
-    /*launchSampleAnalysis(
+    /*launchLivenessAnalysis(
         baseDirectory = baseDirectory,
         runbook = runbook,
         minLogSeverity = Severity.Debug,
