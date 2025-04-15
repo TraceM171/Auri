@@ -54,10 +54,7 @@ fun periodicCollection(
                         )
                     }
 
-                    else -> {
-                        retryCount = 0
-                        it
-                    }
+                    else -> it
                 }
             }.transformWhile {
                 emit(it)
