@@ -108,6 +108,7 @@ class MalShareCollector(
             Logger.i { "Successfully downloaded sample ${sampleHashes.sha1}" }
             if (destination.magicNumber() !in definition.samplesMagicNumberFilter) {
                 Logger.i { "Skipping sample ${sampleHashes.sha1} because of its magic number" }
+                destination.deleteIfExists()
                 return@forEach
             }
             val rawSample = RawCollectedSample(
