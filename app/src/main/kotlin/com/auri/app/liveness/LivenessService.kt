@@ -34,6 +34,7 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 import java.nio.file.Path
 import java.time.LocalDate
 import kotlin.io.path.inputStream
+import kotlin.io.path.name
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -242,10 +243,33 @@ internal class LivenessService(
                     )
                 )
             }
-            vmInteraction.prepareCommand("""schtasks /CREATE /SC ONCE /TN "LaunchSample" /TR "$sampleExecutionPath" /ST 00:00 /RL HIGHEST /F""")
+            val launchSampleScriptPath = sampleExecutionPath.resolveSibling("launch.bat")
+            val launchSampleScriptContents = """
+                @echo off
+                cd /d "${sampleExecutionPath.parent}"
+                "${sampleExecutionPath.name}"
+            """.trimIndent()
+            vmInteraction.sendFile(
+                launchSampleScriptContents.byteInputStream().buffered(),
+                launchSampleScriptPath
+            ).ctx("Sending launch script file")
+                .ctx("Analyzing sample ${entity.name}")
+                .onLeftLog()
+                .getOrElse { error ->
+                    _analysisStatus.update {
+                        LivenessProcessStatus.Failed(
+                            what = "send launch script file",
+                            why = error.messageWithCtx ?: "Unknown"
+                        )
+                    }
+                    collectionError = true
+                    return@takeWhile false
+                }
+            vmInteraction.prepareCommand("""schtasks /CREATE /SC ONCE /TN "LaunchSample" /TR "$launchSampleScriptPath" /ST 00:00 /RL HIGHEST /F""")
                 .run()
                 .ctx("Preparing command")
                 .ctx("Analyzing sample ${entity.name}")
+                .onLeftLog()
                 .getOrElse { error ->
                     _analysisStatus.update {
                         LivenessProcessStatus.Failed(
@@ -260,6 +284,7 @@ internal class LivenessService(
                 .run()
                 .ctx("Running command")
                 .ctx("Analyzing sample ${entity.name}")
+                .onLeftLog()
                 .getOrElse { error ->
                     _analysisStatus.update {
                         LivenessProcessStatus.Failed(
