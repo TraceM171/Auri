@@ -1,11 +1,10 @@
 package com.auri.app
 
+import arrow.continuations.SuspendApp
 import co.touchlab.kermit.Severity
-import kotlinx.coroutines.runBlocking
 import kotlin.io.path.Path
 
-fun main(): Unit = runBlocking {
-
+fun main(): Unit = SuspendApp {
     val baseDirectory = Path("/home/auri/TFM/auri/scratch/.auri")
     val runbook = Path("/home/auri/TFM/auri/scratch/runbook.yml")
 

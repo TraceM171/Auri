@@ -1,5 +1,6 @@
 package com.auri.cli
 
+import arrow.continuations.SuspendApp
 import com.github.ajalt.clikt.command.SuspendingNoOpCliktCommand
 import com.github.ajalt.clikt.command.main
 import com.github.ajalt.clikt.core.Context
@@ -7,8 +8,9 @@ import com.github.ajalt.clikt.core.context
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.output.MordantHelpFormatter
 
-suspend fun main(args: Array<String>) = Auri()
-    .main(args)
+fun main(args: Array<String>) = SuspendApp {
+    Auri().main(args)
+}
 
 private class Auri : SuspendingNoOpCliktCommand() {
     override val printHelpOnEmptyArgs = true
