@@ -68,7 +68,7 @@ class SSHVMInteraction(
             either {
                 withContext(dispatcher) {
                     resourceScope {
-                        Logger.d { "Running command: $command" }
+                        Logger.v { "Running command: $command" }
                         installF(
                             {},
                             { commandInputChannel.close() }
