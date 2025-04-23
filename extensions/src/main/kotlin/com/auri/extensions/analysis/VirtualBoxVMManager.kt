@@ -181,7 +181,8 @@ class VirtualBoxVMManager(
             .bind()
         Logger.d { "Current VM state: $currentMachineStatus" }
         when (currentMachineStatus) {
-            MachineState.PoweredOff -> {
+            MachineState.PoweredOff,
+            MachineState.Aborted -> {
                 Logger.d { "VM is already powered off" }
                 return@either
             }
