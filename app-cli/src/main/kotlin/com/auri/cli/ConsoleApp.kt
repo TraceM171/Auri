@@ -9,8 +9,12 @@ import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.output.MordantHelpFormatter
 import kotlin.time.Duration.Companion.seconds
 
-fun main(args: Array<String>) = SuspendApp(timeout = 5.seconds) {
-    Auri().main(args)
+fun main(args: Array<String>) {
+    runCatching {
+        SuspendApp(timeout = 5.seconds) {
+            Auri().main(args)
+        }
+    }
 }
 
 private class Auri : SuspendingNoOpCliktCommand() {
