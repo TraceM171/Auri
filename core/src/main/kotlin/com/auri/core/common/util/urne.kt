@@ -8,17 +8,23 @@ import arrow.core.right
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 
+typealias Fallible<T> = Either<Throwable, T>
 
 private class ContextualThrowable(
     message: String,
     override val cause: Throwable
 ) : Throwable(message, cause)
 
-val Throwable.deCtx: Throwable
+
+fun failure(message: String) = Throwable(message)
+
+
+val Throwable.decontextualized: Throwable
     get() = when (this) {
         is ContextualThrowable -> cause
         else -> this
     }
+
 val Throwable.messageWithCtx: String?
     get() = when (this) {
         is ContextualThrowable -> "$message -> ${cause.messageWithCtx}"
@@ -30,18 +36,18 @@ fun Throwable.ctx(context: String): Throwable = ContextualThrowable(
     cause = this
 )
 
-inline fun <B> catching(block: () -> B): Either<Throwable, B> = catch(
-    block = { block().right() },
-    catch = { it.left() }
-)
+fun Throwable.suppresses(suppressed: Throwable): Throwable = apply { addSuppressed(suppressed) }
 
-fun <B> Either<Throwable, B>.ctx(context: String) = mapLeft { it.ctx(context) }
 
-fun <B> Either<Throwable, B>.unwrap() = getOrElse { throw it }
+fun <B> Fallible<B>.ctx(context: String) = mapLeft { it.ctx(context) }
 
-fun <B> Either<Throwable, B>.ignore() = mapLeft { }
+fun <B> Fallible<B>.suppresses(suppressed: Throwable) = onLeft { it.suppresses(suppressed) }
 
-fun <B> Either<Throwable, B>.onLeftLog(
+fun <B> Fallible<B>.unwrap() = getOrElse { throw it }
+
+fun <B> Fallible<B>.ignore() = mapLeft { }
+
+fun <B> Fallible<B>.onLeftLog(
     severity: Severity = Severity.Error,
     onlyMessage: Boolean = false
 ) = onLeft {
@@ -53,3 +59,9 @@ fun <B> Either<Throwable, B>.onLeftLog(
         message = "${it.messageWithCtx}"
     )
 }
+
+
+inline fun <B> catching(block: () -> B): Fallible<B> = catch(
+    block = { block().right() },
+    catch = { it.left() }
+)
