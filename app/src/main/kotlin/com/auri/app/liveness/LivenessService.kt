@@ -420,8 +420,8 @@ internal class LivenessService(
         )
 
     private suspend fun <L, R> retryingOperation(
-        maxRetries: Int = 3,
-        delay: Duration = 1.seconds,
+        maxRetries: Int = 5,
+        delay: Duration = 3.seconds,
         operation: suspend () -> Either<L, R>
     ) = Schedule.spaced<L>(delay)
         .and(Schedule.recurs(maxRetries.toLong()))
