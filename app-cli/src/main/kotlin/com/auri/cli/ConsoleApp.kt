@@ -7,8 +7,9 @@ import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.context
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.output.MordantHelpFormatter
+import kotlin.time.Duration.Companion.seconds
 
-fun main(args: Array<String>) = SuspendApp {
+fun main(args: Array<String>) = SuspendApp(timeout = 5.seconds) {
     Auri().main(args)
 }
 
