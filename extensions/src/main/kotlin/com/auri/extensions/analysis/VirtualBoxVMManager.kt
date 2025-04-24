@@ -285,7 +285,6 @@ class VirtualBoxVMManager(
                 ensure(state) {
                     failure("State was not true after $timeout (retries: $retries)")
                 }
-                Logger.d { "State became true after ${startMark.elapsedNow()}, timeout was $retries" }
             }
     }
 

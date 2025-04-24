@@ -220,8 +220,9 @@ internal class LivenessService(
                     )
                 )
             }
-            vmInteraction.sendFile(samplePath.inputStream().buffered(), sampleExecutionPath)
-                .ctx("Sending file")
+            retryingOperation {
+                vmInteraction.sendFile(samplePath.inputStream().buffered(), sampleExecutionPath)
+            }.ctx("Sending file")
                 .ctx("Analyzing sample ${entity.name}")
                 .onLeftLog()
                 .getOrElse { error ->
@@ -249,10 +250,12 @@ internal class LivenessService(
                 cd /d "${sampleExecutionPath.parent}"
                 "${sampleExecutionPath.name}"
             """.trimIndent()
-            vmInteraction.sendFile(
-                launchSampleScriptContents.byteInputStream().buffered(),
-                launchSampleScriptPath
-            ).ctx("Sending launch script file")
+            retryingOperation {
+                vmInteraction.sendFile(
+                    launchSampleScriptContents.byteInputStream().buffered(),
+                    launchSampleScriptPath
+                )
+            }.ctx("Sending launch script file")
                 .ctx("Analyzing sample ${entity.name}")
                 .onLeftLog()
                 .getOrElse { error ->
@@ -265,9 +268,10 @@ internal class LivenessService(
                     collectionError = true
                     return@takeWhile false
                 }
-            vmInteraction.prepareCommand("""schtasks /CREATE /SC ONCE /TN "LaunchSample" /TR "$launchSampleScriptPath" /ST 00:00 /RL HIGHEST /F""")
-                .run()
-                .ctx("Preparing command")
+            retryingOperation {
+                vmInteraction.prepareCommand("""schtasks /CREATE /SC ONCE /TN "LaunchSample" /TR "$launchSampleScriptPath" /ST 00:00 /RL HIGHEST /F""")
+                    .run()
+            }.ctx("Preparing command")
                 .ctx("Analyzing sample ${entity.name}")
                 .onLeftLog()
                 .getOrElse { error ->
@@ -280,9 +284,10 @@ internal class LivenessService(
                     collectionError = true
                     return@takeWhile false
                 }
-            vmInteraction.prepareCommand("""schtasks /RUN /TN "LaunchSample"""")
-                .run()
-                .ctx("Running command")
+            retryingOperation {
+                vmInteraction.prepareCommand("""schtasks /RUN /TN "LaunchSample"""")
+                    .run()
+            }.ctx("Running command")
                 .ctx("Analyzing sample ${entity.name}")
                 .onLeftLog()
                 .getOrElse { error ->
