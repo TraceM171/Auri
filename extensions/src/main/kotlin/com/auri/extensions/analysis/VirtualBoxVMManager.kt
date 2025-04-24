@@ -86,10 +86,9 @@ class VirtualBoxVMManager(
                 catching { restoreProgress.waitForCompletion(definition.longOperationTimeout.inWholeMilliseconds.toInt()) }
                     .ctx("Failed to wait for VM to restore")
                     .bind()
-                ensure(restoreProgress.completed) {
-                    Throwable("Restore progress was not completed")
-                        .ctx("Restoring VM snapshot")
-                }
+                awaitTrueSafe(timeout = definition.shortOperationTimeout) { restoreProgress.completed }
+                    .ctx("Restoring VM snapshot")
+                    .bind()
                 ensure(restoreProgress.resultCode == 0) {
                     Throwable("Result code was not 0, it was: ${restoreProgress.resultCode}, error: ${restoreProgress.errorInfo?.text}")
                         .ctx("Restoring VM snapshot")
@@ -116,9 +115,9 @@ class VirtualBoxVMManager(
                 catching { launchProgress.waitForCompletion(definition.longOperationTimeout.inWholeMilliseconds.toInt()) }
                     .ctx("Failed to wait for VM to start")
                     .bind()
-                ensure(launchProgress.completed) {
-                    failure("Launch progress was not completed")
-                }
+                awaitTrueSafe(timeout = definition.shortOperationTimeout) { launchProgress.completed }
+                    .ctx("Launch progress was not completed")
+                    .bind()
                 ensure(launchProgress.resultCode == 0) {
                     failure("Launch result code was not 0, it was: ${launchProgress.resultCode}, error: ${launchProgress.errorInfo?.text}")
                 }
@@ -163,16 +162,16 @@ class VirtualBoxVMManager(
             catching { stopProgress.waitForCompletion(definition.longOperationTimeout.inWholeMilliseconds.toInt()) }
                 .ctx("Failed to wait for VM to stop")
                 .bind()
-            ensure(stopProgress.completed) {
-                failure("Stop progress was not completed")
-            }
+            awaitTrueSafe(timeout = definition.shortOperationTimeout) { stopProgress.completed }
+                .ctx("Stop progress was not completed")
+                .bind()
             ensure(stopProgress.resultCode == 0) {
                 failure("Stop result code was not 0, it was: ${stopProgress.resultCode}, error: ${stopProgress.errorInfo?.text}")
             }
             awaitTrueSafe(timeout = definition.mediumOperationTimeout) { vbMachine.state == MachineState.PoweredOff }
                 .ctx("VM session state was not powered off after stop, it was: ${vbMachine.state}")
                 .bind()
-            awaitTrueSafe(timeout = definition.shortOperationTimeout) { vbMachine.sessionState == SessionState.Unlocked }
+            awaitTrueSafe(timeout = definition.mediumOperationTimeout) { vbMachine.sessionState == SessionState.Unlocked }
                 .ctx("VM session state was not unlocked after stop, it was: ${vbMachine.sessionState}")
                 .bind()
             Logger.d { "VM stopped" }
