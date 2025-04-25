@@ -3,16 +3,14 @@ package com.auri.extensions.analysis
 import arrow.core.Either
 import arrow.core.raise.either
 import arrow.core.raise.ensure
+import arrow.core.recover
 import arrow.fx.coroutines.ResourceScope
 import arrow.fx.coroutines.resourceScope
 import arrow.resilience.Schedule
 import arrow.resilience.retryRaise
 import co.touchlab.kermit.Logger
 import com.auri.core.analysis.VMManager
-import com.auri.core.common.util.catching
-import com.auri.core.common.util.ctx
-import com.auri.core.common.util.failure
-import com.auri.core.common.util.installF
+import com.auri.core.common.util.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.virtualbox_7_1.*
@@ -159,15 +157,22 @@ class VirtualBoxVMManager(
             val stopProgress = catching { vbSession.console.powerDown() }
                 .ctx("Powering down VM")
                 .bind()
-            catching { stopProgress.waitForCompletion(definition.longOperationTimeout.inWholeMilliseconds.toInt()) }
-                .ctx("Failed to wait for VM to stop")
-                .bind()
-            awaitTrueSafe(timeout = definition.shortOperationTimeout) { stopProgress.completed }
-                .ctx("Stop progress was not completed")
-                .bind()
-            ensure(stopProgress.resultCode == 0) {
-                failure("Stop result code was not 0, it was: ${stopProgress.resultCode}, error: ${stopProgress.errorInfo?.text}")
-            }
+            either {
+                catching { stopProgress.waitForCompletion(definition.longOperationTimeout.inWholeMilliseconds.toInt()) }
+                    .ctx("Failed to wait for VM to stop")
+                    .bind()
+                awaitTrueSafe(timeout = definition.shortOperationTimeout) { stopProgress.completed }
+                    .ctx("Stop progress was not completed")
+                    .bind()
+                ensure(stopProgress.resultCode == 0) {
+                    failure("Stop result code was not 0, it was: ${stopProgress.resultCode}, error: ${stopProgress.errorInfo?.text}")
+                }
+            }.recover {
+                Logger.d { "Performing an emergency stop due to powerOff failing" }
+                catching { vbMachine.launchVMProcess(vbSession, "emergencyStop", emptyList()) }
+                    .ctx("Performing an emergency stop of the vm")
+                    .suppresses(it)
+            }.bind()
             awaitTrueSafe(timeout = definition.mediumOperationTimeout) { vbMachine.state == MachineState.PoweredOff }
                 .ctx("VM session state was not powered off after stop, it was: ${vbMachine.state}")
                 .bind()
