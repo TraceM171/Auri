@@ -7,8 +7,7 @@ kotest = "5.9.1"
 kotest-arrow = "2.0.0"
 ajalt-clikt = "5.0.2"
 touchlab-kermit = "2.0.5"
-arrow = "2.0.1"
-arrow-suspendapp = "0.5.0"
+arrow = "2.1.0"
 exposed = "0.58.0"
 xeial-sqlite = "3.44.1.0"
 lingala-zip4j = "2.11.5"
@@ -32,7 +31,7 @@ touchlab-kermit-io = { module = "co.touchlab:kermit-io", version.ref = "touchlab
 arrow-core = { module = "io.arrow-kt:arrow-core", version.ref = "arrow" }
 arrow-coroutines = { module = "io.arrow-kt:arrow-fx-coroutines", version.ref = "arrow" }
 arrow-resilience = { module = "io.arrow-kt:arrow-resilience", version.ref = "arrow" }
-arrow-suspendapp = { module = "io.arrow-kt:suspendapp", version.ref = "arrow-suspendapp" }
+arrow-suspendapp = { module = "io.arrow-kt:suspendapp", version.ref = "arrow" }
 exposed-core = { module = "org.jetbrains.exposed:exposed-core", version.ref = "exposed" }
 exposed-dao = { module = "org.jetbrains.exposed:exposed-dao", version.ref = "exposed" }
 exposed-jdbc = { module = "org.jetbrains.exposed:exposed-jdbc", version.ref = "exposed" }
