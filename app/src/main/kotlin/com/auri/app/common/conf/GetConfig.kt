@@ -1,4 +1,4 @@
-package com.auri.app.conf
+package com.auri.app.common.conf
 
 import arrow.core.Either
 import arrow.core.raise.catch

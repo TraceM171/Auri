@@ -1,4 +1,4 @@
-package com.auri.app.conf.model
+package com.auri.app.common.conf.model
 
 import com.auri.app.common.data.KeepListening
 import com.auri.core.analysis.Analyzer

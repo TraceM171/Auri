@@ -1,4 +1,4 @@
-package com.auri.app.conf
+package com.auri.app.common.conf
 
 import com.sksamuel.hoplite.*
 import com.sksamuel.hoplite.decoder.DataClassDecoder

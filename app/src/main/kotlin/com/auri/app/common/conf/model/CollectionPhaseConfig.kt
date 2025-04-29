@@ -1,4 +1,4 @@
-package com.auri.app.conf.model
+package com.auri.app.common.conf.model
 
 import com.auri.core.collection.Collector
 import com.auri.core.collection.InfoProvider
