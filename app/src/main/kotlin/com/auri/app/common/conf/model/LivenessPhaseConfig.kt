@@ -18,5 +18,5 @@ internal data class LivenessPhaseConfig(
     val markAsChangedOnAccessLost: Boolean = true,
     val markAsInactiveAfter: Duration = 5.minutes,
     val analyzeEvery: Duration = 15.seconds,
-    val keepListening: KeepListening?
+    val keepListening: KeepListening = KeepListening(pollTime = 1.seconds),
 )
