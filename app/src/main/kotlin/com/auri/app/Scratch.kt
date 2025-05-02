@@ -41,5 +41,6 @@ fun main(): Unit = SuspendApp {
         baseDirectory = baseDirectory,
         runbook = runbook,
         minLogSeverity = Severity.Debug,
+        aggressive = false,
     )
 }

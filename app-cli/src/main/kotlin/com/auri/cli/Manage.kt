@@ -9,6 +9,8 @@ import com.github.ajalt.clikt.command.SuspendingCliktCommand
 import com.github.ajalt.clikt.command.SuspendingNoOpCliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.subcommands
+import com.github.ajalt.clikt.parameters.options.flag
+import com.github.ajalt.clikt.parameters.options.option
 import java.nio.file.Path
 
 class Manage : SuspendingNoOpCliktCommand(name = "manage") {
@@ -23,24 +25,39 @@ class Manage : SuspendingNoOpCliktCommand(name = "manage") {
 
 private class PruneSamples : SuspendingCliktCommand(name = "prune-samples") {
     override fun help(context: Context): String = """
-        Prune samples directory, removing all files not declared as alive samples by the AURI pipeline.
-        This will not remove the database entries, only the executable files.
-        This will cause issues when trying to use samples not declared as alive in further operations.
-        This command is not reversible, so be careful when using it.
-        Note: ANY file not declared as alive will be deleted from the samples directory, even if it is not a sample.
+        Prune samples that have been marked as dead by the AURI pipeline.
+        This will not delete the database entries, only the executable files, to free up space.
+        Trying to use deleted sample files will result in issues, so re-analyzing this samples will not be possible.
+        This operation may be performed simultaneously with any phase of the pipeline.
+        $dataDeletionWarning
     """.trimIndent()
 
     private val baseDirectory: Path by baseDirectory()
     private val runbook: Path by runbook()
     private val verbosity: Int by verbosity()
+    private val aggressive: Boolean by option(
+        "--aggressive",
+        help = """
+            This will also delete samples that have not been analyzed yet, are not present in the database, or files unrelated to the AURI pipeline present in the samples directory.
+            This operation may interfere with the AURI pipeline, offline use is recommended.
+        """.trimIndent()
+    ).flag(
+        "--no-aggressive",
+        default = false,
+        defaultForHelp = "false"
+    )
 
     override suspend fun run() {
         val result = pruneSamples(
             baseDirectory = baseDirectory,
             runbook = runbook,
             minLogSeverity = verbosityToSeverity(verbosity),
+            aggressive = aggressive,
         )
 
         echo("Pruned ${result.prunedSamples} samples, freed ${result.bytesFreed} bytes")
     }
 }
+
+private const val dataDeletionWarning =
+    "NOTE: This operation will delete data irreversibly, please ensure you know what you are doing."

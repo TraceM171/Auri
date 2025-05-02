@@ -262,12 +262,13 @@ suspend fun CoroutineScope.launchEvaluationAnalysis(
 suspend fun pruneSamples(
     baseDirectory: Path,
     runbook: Path,
-    minLogSeverity: Severity
+    minLogSeverity: Severity,
+    aggressive: Boolean
 ) = managementOperation(
     baseDirectory = baseDirectory,
     runbook = runbook,
     minLogSeverity = minLogSeverity
-).pruneDeadSamples()
+).pruneDeadSamples(aggressive)
 
 private suspend fun managementOperation(
     baseDirectory: Path,
