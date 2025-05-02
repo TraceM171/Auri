@@ -11,7 +11,6 @@ import com.github.ajalt.mordant.rendering.Whitespace
 import com.github.ajalt.mordant.table.ColumnWidth
 import com.github.ajalt.mordant.table.VerticalLayoutBuilder
 import com.github.ajalt.mordant.table.grid
-import com.github.ajalt.mordant.table.horizontalLayout
 import com.github.ajalt.mordant.widgets.Text
 import com.github.ajalt.mordant.widgets.definitionList
 import kotlinx.coroutines.coroutineScope
@@ -126,12 +125,17 @@ private fun VerticalLayoutBuilder.tui(
                 }
                 cell("")
                 cell(
-                    horizontalLayout {
-                        cell(Text("Sample ${runningNow.sampleId}", whitespace = Whitespace.PRE_WRAP)) {
-                            style(italic = true)
+                    grid {
+                        column(2) {
+                            this.width = ColumnWidth(priority = 1)
                         }
-                        cell(" - ")
-                        cell(Text(subStepName, whitespace = Whitespace.PRE_WRAP))
+                        row {
+                            cell(Text("Sample ${runningNow.sampleId}", whitespace = Whitespace.PRE_WRAP)) {
+                                style(italic = true)
+                            }
+                            cell(" - ")
+                            cell(Text(subStepName, whitespace = Whitespace.PRE_WRAP))
+                        }
                     }
                 )
                 cell("")
