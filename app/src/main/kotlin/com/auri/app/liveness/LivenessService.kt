@@ -35,6 +35,7 @@ import java.nio.file.Path
 import java.time.LocalDate
 import kotlin.io.path.inputStream
 import kotlin.io.path.name
+import kotlin.io.path.notExists
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -170,6 +171,10 @@ internal class LivenessService(
         allSamples.takeWhile { entity ->
             Logger.d { "Starting analysis for sample ${entity.name}" }
             val samplePath = samplesDir.resolve(entity.path)
+            if (samplePath.notExists()) {
+                Logger.w { "Sample ${entity.name} not found in $samplesDir, skipping..." }
+                return@takeWhile true
+            }
             _analysisStatus.update {
                 val analyzingOrNull = (it as? LivenessProcessStatus.Analyzing ?: return@update it)
                 analyzingOrNull.copy(
