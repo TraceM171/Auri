@@ -3,11 +3,13 @@ package com.auri.extensions.analysis
 import arrow.core.*
 import arrow.core.raise.catch
 import arrow.core.raise.either
+import arrow.core.raise.ensureNotNull
 import co.touchlab.kermit.Logger
 import com.auri.core.analysis.Analyzer
 import com.auri.core.analysis.ChangeReport
 import com.auri.core.analysis.VMInteraction
 import com.auri.core.common.util.ctx
+import com.auri.core.common.util.failure
 import com.auri.core.common.util.getResource
 import com.auri.core.common.util.messageWithCtx
 import kotlinx.coroutines.Job
@@ -51,21 +53,28 @@ class FileChangeAnalyzer(
         }
     }
 
-    private var initialState: Map<VMFilePath, FileState> = mapOf()
+    private val initialStates: MutableMap<Analyzer.StateKey, Map<VMFilePath, FileState>> = mutableMapOf()
 
     override suspend fun captureInitialState(
         workingDirectory: Path,
-        interaction: VMInteraction
+        interaction: VMInteraction,
+        stateKey: Analyzer.StateKey
     ): Either<Throwable, Unit> = either {
-        initialState = getCurrentState(interaction)
+        getCurrentState(interaction)
             .ctx("Getting initial state")
             .bind()
+            .let { initialStates.put(stateKey, it) }
     }
 
     override suspend fun reportChanges(
         workingDirectory: Path,
-        interaction: VMInteraction
+        interaction: VMInteraction,
+        stateKey: Analyzer.StateKey
     ): Either<Throwable, ChangeReport> = either {
+        val initialState = initialStates[stateKey]
+        ensureNotNull(initialState) {
+            failure("Tried to report changed based on a non-existing initial stated (key=${stateKey.value})")
+        }
         val currentState = getCurrentState(interaction).getOrElse {
             Logger.i { "Failed to get current state, marking as AccessLost: ${it.messageWithCtx}" }
             return@either ChangeReport.AccessLost

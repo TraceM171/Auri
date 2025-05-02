@@ -13,16 +13,26 @@ fun main(): Unit = SuspendApp {
         runbook = runbook,
         minLogSeverity = Severity.Debug,
         pruneCache = false,
-        streamed = false
+        streamed = true
     ).collect { status ->
         println(status)
     }*/
 
-    launchSampleCollection(
+    /*launchSampleCollection(
         baseDirectory = baseDirectory,
         runbook = runbook,
         minLogSeverity = Severity.Debug,
         pruneCache = false
+    ).collect { status ->
+        println(status)
+    }*/
+
+    launchEvaluationAnalysis(
+        baseDirectory = baseDirectory,
+        runbook = runbook,
+        minLogSeverity = Severity.Debug,
+        pruneCache = false,
+        streamed = true
     ).collect { status ->
         println(status)
     }

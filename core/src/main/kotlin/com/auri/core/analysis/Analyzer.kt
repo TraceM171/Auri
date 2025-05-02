@@ -33,12 +33,14 @@ interface Analyzer : HasDependencies, AutoCloseable {
      *
      * @param workingDirectory The working directory for the analysis.
      * @param interaction The VM interaction object to use for communication with the VM.
+     * @param stateKey Allows saving multiple initial states for the same analyzer.
      * @return An [Either] that represents the result of the operation.
      *        [Either.Left] if the operation failed, [Either.Right] if the operation succeeded.
      */
     suspend fun captureInitialState(
         workingDirectory: Path,
-        interaction: VMInteraction
+        interaction: VMInteraction,
+        stateKey: StateKey = StateKey("default")
     ): Either<Throwable, Unit>
 
     /**
@@ -46,16 +48,21 @@ interface Analyzer : HasDependencies, AutoCloseable {
      *
      * @param workingDirectory The working directory for the analysis.
      * @param interaction The VM interaction object to use for communication with the VM.
+     * @param stateKey Selects the state key to use when retrieving the initial state to compare to.
      * @return An [Either] that represents the result of the operation.
      *        [Either.Left] if the operation failed, [Either.Right] if the operation succeeded.
      */
     suspend fun reportChanges(
         workingDirectory: Path,
-        interaction: VMInteraction
+        interaction: VMInteraction,
+        stateKey: StateKey = StateKey("default")
     ): Either<Throwable, ChangeReport>
 
 
     override suspend fun checkDependencies(): List<MissingDependency> = emptyList()
 
     override fun close() = Unit
+
+    @JvmInline
+    value class StateKey(val value: String = "default")
 }

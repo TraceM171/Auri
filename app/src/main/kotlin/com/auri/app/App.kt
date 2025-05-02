@@ -12,13 +12,17 @@ import com.auri.app.collection.CollectionService
 import com.auri.app.common.DefaultMessageFormatter
 import com.auri.app.common.conf.configByPrefix
 import com.auri.app.common.conf.model.CollectionPhaseConfig
+import com.auri.app.common.conf.model.EvaluationPhaseConfig
 import com.auri.app.common.conf.model.LivenessPhaseConfig
 import com.auri.app.common.conf.model.MainConf
 import com.auri.app.common.data.entity.RawSampleTable
+import com.auri.app.common.data.entity.SampleEvaluationTable
 import com.auri.app.common.data.entity.SampleInfoTable
 import com.auri.app.common.data.entity.SampleLivenessCheckTable
 import com.auri.app.common.data.sqliteConnection
 import com.auri.app.common.withExtensions
+import com.auri.app.evaluation.EvaluationProcessStatus
+import com.auri.app.evaluation.EvaluationService
 import com.auri.app.liveness.LivenessProcessStatus
 import com.auri.app.liveness.LivenessService
 import com.auri.core.analysis.Analyzer
@@ -179,6 +183,82 @@ suspend fun CoroutineScope.launchLivenessAnalysis(
     }
 }
 
+suspend fun CoroutineScope.launchEvaluationAnalysis(
+    baseDirectory: Path,
+    runbook: Path,
+    minLogSeverity: Severity,
+    pruneCache: Boolean,
+    streamed: Boolean
+): Flow<EvaluationProcessStatus> {
+    val initContext = init(
+        baseDirectory = baseDirectory,
+        runbook = runbook,
+        actionName = "evaluation",
+        minLogSeverity = minLogSeverity,
+        pruneCache = pruneCache
+    ).getOrElse {
+        return when (it) {
+            is InitError.GettingMainConfig -> flowOf(
+                EvaluationProcessStatus.Failed(
+                    what = "Failed to load main segment of runbook",
+                    why = it.cause.messageWithCtx ?: "Unknown error"
+                )
+            )
+        }
+    }
+
+    val phaseConfig = runbook.configByPrefix<EvaluationPhaseConfig>(
+        classLoader = initContext.classLoader,
+        prefix = "evaluationPhase"
+    ).getOrElse {
+        return flowOf(
+            EvaluationProcessStatus.Failed(
+                what = "loading evaluation phase segment of runbook",
+                why = it.messageWithCtx ?: "Unknown error"
+            )
+        )
+    }
+
+    val evaluationService = EvaluationService(
+        cacheDir = initContext.cacheDir,
+        samplesDir = initContext.samplesDir,
+        auriDB = initContext.auriDB,
+        sampleExecutionPath = phaseConfig.sampleExecutionPath,
+        vendorVMs = phaseConfig.vendorVMs,
+        analyzers = phaseConfig.analyzers,
+        markAsInmuneOnAccessLost = phaseConfig.markAsInmuneOnAccessLost,
+        markAsInmuneAfter = phaseConfig.markAsInmuneAfter,
+        analyzeEvery = phaseConfig.analyzeEvery,
+        keepListening = phaseConfig.keepListening.takeIf { streamed },
+    )
+    val job = launch { evaluationService.run() }
+
+
+    return evaluationService.analysisStatus.transformWhile {
+        emit(it)
+
+        when (it) {
+            is EvaluationProcessStatus.Analyzing,
+            EvaluationProcessStatus.Initializing,
+            is EvaluationProcessStatus.CapturingGoodState,
+            EvaluationProcessStatus.NotStarted -> true
+
+            is EvaluationProcessStatus.Finished,
+            is EvaluationProcessStatus.MissingDependencies,
+            is EvaluationProcessStatus.Failed -> false
+        }
+    }.onCompletion {
+        job.cancel()
+        phaseConfig.run {
+            vendorVMs.forEach {
+                it.vmManager.close()
+                it.vmInteraction.close()
+            }
+            analyzers.forEach(Analyzer::close)
+        }
+    }
+}
+
 
 @OptIn(ExperimentalPathApi::class)
 private suspend fun init(
@@ -231,7 +311,8 @@ private suspend fun init(
         SchemaUtils.create(
             RawSampleTable,
             SampleInfoTable,
-            SampleLivenessCheckTable
+            SampleLivenessCheckTable,
+            SampleEvaluationTable
         )
     }
 
