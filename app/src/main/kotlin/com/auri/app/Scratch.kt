@@ -27,7 +27,7 @@ fun main(): Unit = SuspendApp {
         println(status)
     }*/
 
-    launchEvaluationAnalysis(
+    /*launchEvaluationAnalysis(
         baseDirectory = baseDirectory,
         runbook = runbook,
         minLogSeverity = Severity.Debug,
@@ -35,5 +35,11 @@ fun main(): Unit = SuspendApp {
         streamed = true
     ).collect { status ->
         println(status)
-    }
+    }*/
+
+    pruneSamples(
+        baseDirectory = baseDirectory,
+        runbook = runbook,
+        minLogSeverity = Severity.Debug,
+    )
 }

@@ -25,11 +25,11 @@ import com.auri.app.evaluation.EvaluationProcessStatus
 import com.auri.app.evaluation.EvaluationService
 import com.auri.app.liveness.LivenessProcessStatus
 import com.auri.app.liveness.LivenessService
+import com.auri.app.manage.ManageService
 import com.auri.core.analysis.Analyzer
 import com.auri.core.collection.Collector
 import com.auri.core.collection.InfoProvider
-import com.auri.core.common.util.chainIfNotNull
-import com.auri.core.common.util.messageWithCtx
+import com.auri.core.common.util.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -257,6 +257,37 @@ suspend fun CoroutineScope.launchEvaluationAnalysis(
             analyzers.forEach(Analyzer::close)
         }
     }
+}
+
+suspend fun pruneSamples(
+    baseDirectory: Path,
+    runbook: Path,
+    minLogSeverity: Severity
+) = managementOperation(
+    baseDirectory = baseDirectory,
+    runbook = runbook,
+    minLogSeverity = minLogSeverity
+).pruneDeadSamples()
+
+private suspend fun managementOperation(
+    baseDirectory: Path,
+    runbook: Path,
+    minLogSeverity: Severity
+): ManageService {
+    val initContext = init(
+        baseDirectory = baseDirectory,
+        runbook = runbook,
+        actionName = "management",
+        minLogSeverity = minLogSeverity,
+        pruneCache = false
+    ).mapLeft { failure(it.toString()) }
+        .ctx("Initializing")
+        .unwrap()
+
+    return ManageService(
+        samplesDir = initContext.samplesDir,
+        auriDB = initContext.auriDB,
+    )
 }
 
 
