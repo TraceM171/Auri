@@ -113,19 +113,27 @@ class SSHVMInteraction(
                         val commandChannelsJob = Job()
                         launch(commandChannelsJob) {
                             commandInputChannel.consumeAsFlow().collect { input ->
-                                channelOutputStream.write(input)
-                                channelOutputStream.flush()
+                                catching {
+                                    channelOutputStream.write(input)
+                                    channelOutputStream.flush()
+                                }.ctx("Sending command input")
+                                    .bind()
                             }
                         }
                         launch(commandChannelsJob) {
                             channelInputStream.linesFlow().collect { line ->
-                                commandOutputChannel.send(line)
+                                catching { commandOutputChannel.send(line) }
+                                    .ctx("Receiving command output")
+                                    .bind()
                             }
                         }
                         launch(commandChannelsJob) {
-                            channelErrorStream.linesFlow().collect { line ->
-                                commandErrorChannel.send(line)
-                            }
+                            catching {
+                                channelErrorStream.linesFlow().collect { line ->
+                                    commandErrorChannel.send(line)
+                                }
+                            }.ctx("Receiving command error")
+                                .bind()
                         }
                         val took = measureTime { while (!channel.isClosed) delay(100.milliseconds) }
                         Logger.d { "Command took $took" }
