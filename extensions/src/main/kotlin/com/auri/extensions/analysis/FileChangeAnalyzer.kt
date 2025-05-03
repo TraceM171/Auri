@@ -8,10 +8,7 @@ import co.touchlab.kermit.Logger
 import com.auri.core.analysis.Analyzer
 import com.auri.core.analysis.ChangeReport
 import com.auri.core.analysis.VMInteraction
-import com.auri.core.common.util.ctx
-import com.auri.core.common.util.failure
-import com.auri.core.common.util.getResource
-import com.auri.core.common.util.messageWithCtx
+import com.auri.core.common.util.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -96,33 +93,42 @@ class FileChangeAnalyzer(
         coroutineScope {
             val job = Job()
             val result = select {
-                async(job) { command.run() }.onAwait(ScriptResult::RunEnded)
                 async(job) {
-                    command.commandError.consumeAsFlow().firstOrNull()
-                        .also { if (it == null) delay(5.seconds) }
-                }.onAwait(ScriptResult::ConsoleErrorReceived)
+                    catching { command.run() }
+                        .ctx("Running script")
+                }.onAwait { it.map(ScriptResult::RunEnded) }
                 async(job) {
-                    definition.files.map { path ->
-                        command.commandInput.send("${path.value}\n")
-                        command.commandOutput.receive().let(::parseScriptResult)
-                            .getOrElse {
-                                Logger.e { "Failed to parse script result" }
-                                error("Failed to parse script result")
-                            }
-                    }.reduce { acc, it ->
-                        acc + it
-                    }
-                }.onAwait(ScriptResult::AllFilesChecked)
+                    catching {
+                        command.commandError.consumeAsFlow().firstOrNull()
+                            .also { if (it == null) delay(5.seconds) }
+                    }.ctx("Waiting for error message")
+                }.onAwait { it.map(ScriptResult::ConsoleErrorReceived) }
+                async(job) {
+                    catching {
+                        definition.files.map { path ->
+                            command.commandInput.send("${path.value}\n")
+                            command.commandOutput.receive().let(::parseScriptResult)
+                                .getOrElse {
+                                    Logger.e { "Failed to parse script result" }
+                                    error("Failed to parse script result")
+                                }
+                        }.reduce { acc, it ->
+                            acc + it
+                        }
+                    }.ctx("Waiting for all files to be checked")
+                }.onAwait { it.map(ScriptResult::AllFilesChecked) }
             }
             job.cancel()
-            when (result) {
-                is ScriptResult.RunEnded -> result.result
-                    .flatMap { Throwable("Script finished before checking all files").left() }
+            result.flatMap {
+                when (it) {
+                    is ScriptResult.RunEnded -> it.result
+                        .flatMap { Throwable("Script finished before checking all files").left() }
 
-                is ScriptResult.ConsoleErrorReceived -> Throwable("Script sent an error message: ${result.error}")
-                    .left()
+                    is ScriptResult.ConsoleErrorReceived -> Throwable("Script sent an error message: ${it.error}")
+                        .left()
 
-                is ScriptResult.AllFilesChecked -> result.data.right()
+                    is ScriptResult.AllFilesChecked -> it.data.right()
+                }
             }.ctx("Running script to check file changes")
                 .bind()
         }

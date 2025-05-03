@@ -18,8 +18,6 @@ import com.jcraft.jsch.JSch
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.consumeAsFlow
-import java.io.BufferedReader
-import java.io.BufferedWriter
 import java.io.InputStream
 import java.net.InetAddress
 import java.nio.file.Path
@@ -102,15 +100,15 @@ class SSHVMInteraction(
                         Logger.d { "Waiting for command to finish" }
                         val channelInputStream = installF(
                             { channel.inputStream.bufferedReader() },
-                            BufferedReader::close
+                            { it.close() }
                         )
                         val channelOutputStream = installF(
                             { channel.outputStream.bufferedWriter() },
-                            BufferedWriter::close
+                            { it.close() }
                         )
                         val channelErrorStream = installF(
                             { channel.errStream.bufferedReader() },
-                            BufferedReader::close
+                            { it.close() }
                         )
                         val commandChannelsJob = Job()
                         launch(commandChannelsJob) {
@@ -132,7 +130,10 @@ class SSHVMInteraction(
                         val took = measureTime { while (!channel.isClosed) delay(100.milliseconds) }
                         Logger.d { "Command took $took" }
                         commandChannelsJob.cancelAndJoin()
+                        Logger.d { "Command finished" }
                         channel.exitStatus
+                    }.also {
+                        Logger.d { "Command resources released" }
                     }
                 }
             }

@@ -8,16 +8,6 @@ fun main(): Unit = SuspendApp {
     val baseDirectory = Path("/home/auri/TFM/auri/scratch/.auri")
     val runbook = Path("/home/auri/TFM/auri/scratch/runbook.yml")
 
-    /*launchLivenessAnalysis(
-        baseDirectory = baseDirectory,
-        runbook = runbook,
-        minLogSeverity = Severity.Debug,
-        pruneCache = false,
-        streamed = true
-    ).collect { status ->
-        println(status)
-    }*/
-
     /*launchSampleCollection(
         baseDirectory = baseDirectory,
         runbook = runbook,
@@ -26,6 +16,16 @@ fun main(): Unit = SuspendApp {
     ).collect { status ->
         println(status)
     }*/
+
+    launchLivenessAnalysis(
+        baseDirectory = baseDirectory,
+        runbook = runbook,
+        minLogSeverity = Severity.Debug,
+        pruneCache = false,
+        streamed = false
+    ).collect { status ->
+        println(status)
+    }
 
     /*launchEvaluationAnalysis(
         baseDirectory = baseDirectory,
@@ -37,10 +37,10 @@ fun main(): Unit = SuspendApp {
         println(status)
     }*/
 
-    pruneSamples(
+    /*pruneSamples(
         baseDirectory = baseDirectory,
         runbook = runbook,
         minLogSeverity = Severity.Debug,
         aggressive = false,
-    )
+    )*/
 }
