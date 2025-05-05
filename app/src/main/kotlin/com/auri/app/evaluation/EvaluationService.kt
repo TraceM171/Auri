@@ -95,6 +95,25 @@ internal class EvaluationService(
         )
 
         vendorVMs.forEach { vendorVM ->
+            Logger.d { "Ensuring all vendor vms are powered off" }
+            retryingOperation {
+                vendorVM.vmManager.stopVM()
+                    .ctx("Powering off VM at start")
+                    .ctx("Vendor ${vendorVM.info.name}")
+                    .onLeftLog(severity = Severity.Warn, onlyMessage = true)
+            }.onLeftLog()
+                .getOrElse { error ->
+                    _analysisStatus.update {
+                        EvaluationProcessStatus.Failed(
+                            what = "power off VM for vendor ${vendorVM.info.name}",
+                            why = error.messageWithCtx ?: "Unknown"
+                        )
+                    }
+                    return
+                }
+        }
+
+        vendorVMs.forEach { vendorVM ->
             Logger.d { "Capturing initial state for vendor ${vendorVM.info.name}" }
             _analysisStatus.update {
                 EvaluationProcessStatus.CapturingGoodState(
