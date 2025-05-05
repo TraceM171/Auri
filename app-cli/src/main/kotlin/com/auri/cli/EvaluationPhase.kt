@@ -227,9 +227,10 @@ private fun VerticalLayoutBuilder.evaluationStatsTui(evaluationStats: Evaluation
         body {
             evaluationStats.vendorStats.forEach { (vendor, stats) ->
                 val blockRate = stats.detectedSamples / stats.analyzedSamples.toDouble()
+                val blockRateText = if (blockRate.isNaN()) "" else " %.2f".format(blockRate * 100)
                 row {
                     cell(Text(vendor.name, whitespace = Whitespace.PRE_WRAP))
-                    cell(Text("${"%.2f".format(blockRate * 100)}%")) {
+                    cell(Text("${evaluationStats.totalSamplesAnalyzed} of ${evaluationStats.totalSamples}$blockRateText")) {
                         align = TextAlign.CENTER
                     }
                 }
