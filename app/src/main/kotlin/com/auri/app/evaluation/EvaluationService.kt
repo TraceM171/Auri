@@ -10,10 +10,7 @@ import arrow.resilience.retryEither
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import com.auri.app.common.data.KeepListening
-import com.auri.app.common.data.entity.RawSampleEntity
-import com.auri.app.common.data.entity.RawSampleTable
-import com.auri.app.common.data.entity.SampleEvaluationEntity
-import com.auri.app.common.data.entity.SampleLivenessCheckTable
+import com.auri.app.common.data.entity.*
 import com.auri.app.common.data.getAsFlow
 import com.auri.core.analysis.Analyzer
 import com.auri.core.analysis.ChangeReport
@@ -28,7 +25,8 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.toKotlinLocalDate
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.andWhere
-import org.jetbrains.exposed.sql.exists
+import org.jetbrains.exposed.sql.countDistinct
+import org.jetbrains.exposed.sql.innerJoin
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.nio.file.Path
 import java.time.LocalDate
@@ -64,20 +62,34 @@ internal class EvaluationService(
             _analysisStatus.update { EvaluationProcessStatus.MissingDependencies(missingDependencies) }
             return
         }
-        val samplesFilterQuery = exists(
-            SampleLivenessCheckTable.select(RawSampleTable.id)
-                .where { SampleLivenessCheckTable.sampleId eq RawSampleTable.id }
-                .andWhere { SampleLivenessCheckTable.isAlive eq true }
-        )
+        val vendorNames = vendorVMs.map { it.info.name }
+        val requiredVendorCount = vendorNames.size.toLong()
+        val underEvaluatedSampleIds = SampleLivenessCheckTable.innerJoin(
+            otherTable = SampleEvaluationTable,
+            onColumn = { SampleLivenessCheckTable.sampleId },
+            otherColumn = { SampleEvaluationTable.sampleId }
+        ).select(SampleLivenessCheckTable.sampleId)
+            .where { SampleLivenessCheckTable.isAlive eq true }
+            .andWhere { SampleEvaluationTable.vendor inList vendorNames }
+            .groupBy(SampleLivenessCheckTable.sampleId)
+            .having {
+                SampleEvaluationTable.vendor.countDistinct() less requiredVendorCount
+            }
         val getTotalSamples = suspend {
             newSuspendedTransaction(
                 context = Dispatchers.IO,
                 db = auriDB
-            ) { RawSampleEntity.count(samplesFilterQuery).toInt() }
+            ) {
+                RawSampleTable
+                    .select(RawSampleTable.id)
+                    .where { RawSampleTable.id inSubQuery underEvaluatedSampleIds }
+                    .count()
+                    .toInt()
+            }
         }
         val allSamples = RawSampleEntity.getAsFlow(
             database = auriDB,
-            filter = { samplesFilterQuery },
+            filter = { RawSampleTable.id inSubQuery underEvaluatedSampleIds },
             batchSize = 100,
             keepListening = keepListening
         )
