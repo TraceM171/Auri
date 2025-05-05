@@ -56,7 +56,7 @@ sealed interface EvaluationProcessStatus {
     )
 
     data class VendorStats(
-        val detectedSamples: Int,
+        val blockedSamples: Int,
         val analyzedSamples: Int,
     )
 }

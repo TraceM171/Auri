@@ -211,7 +211,7 @@ internal class EvaluationService(
                 EvaluationProcessStatus.EvaluationStats(
                     vendorStats = vendorVMs.associate { vendorVM ->
                         vendorVM.info to EvaluationProcessStatus.VendorStats(
-                            detectedSamples = 0,
+                            blockedSamples = 0,
                             analyzedSamples = 0
                         )
                     }.toMap(),
@@ -464,12 +464,12 @@ internal class EvaluationService(
                     val currentVendorStats = analyzingOrNull.evaluationStats.vendorStats.getOrDefault(
                         vendorVM.info,
                         EvaluationProcessStatus.VendorStats(
-                            detectedSamples = 0,
+                            blockedSamples = 0,
                             analyzedSamples = 0
                         )
                     )
                     val newVendorStats = currentVendorStats.copy(
-                        detectedSamples = currentVendorStats.detectedSamples
+                        blockedSamples = currentVendorStats.blockedSamples
                             .chainIf(!changeReport.isInmune, Int::inc),
                         analyzedSamples = currentVendorStats.analyzedSamples + 1
                     )
