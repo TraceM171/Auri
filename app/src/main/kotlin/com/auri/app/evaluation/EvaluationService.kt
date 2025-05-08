@@ -64,16 +64,22 @@ internal class EvaluationService(
         }
         val vendorNames = vendorVMs.map { it.info.name }
         val requiredVendorCount = vendorNames.size.toLong()
-        val underEvaluatedSampleIds = SampleLivenessCheckTable.innerJoin(
-            otherTable = SampleEvaluationTable,
-            onColumn = { SampleLivenessCheckTable.sampleId },
-            otherColumn = { SampleEvaluationTable.sampleId }
-        ).select(SampleLivenessCheckTable.sampleId)
-            .where { SampleLivenessCheckTable.isAlive eq true }
-            .andWhere { SampleEvaluationTable.vendor inList vendorNames }
-            .groupBy(SampleLivenessCheckTable.sampleId)
-            .having {
-                SampleEvaluationTable.vendor.countDistinct() less requiredVendorCount
+        val underEvaluatedSampleIds = RawSampleTable.innerJoin(
+            otherTable = SampleLivenessCheckTable,
+            onColumn = { RawSampleTable.id },
+            otherColumn = { SampleLivenessCheckTable.sampleId },
+            additionalConstraint = { SampleLivenessCheckTable.isAlive eq true }
+        ).select(RawSampleTable.id)
+            .where {
+                org.jetbrains.exposed.sql.notExists(
+                    SampleEvaluationTable.select(SampleEvaluationTable.id)
+                        .where { SampleEvaluationTable.sampleId eq RawSampleTable.id }
+                        .andWhere { SampleEvaluationTable.vendor inList vendorNames }
+                        .groupBy(SampleEvaluationTable.sampleId)
+                        .having {
+                            SampleEvaluationTable.vendor.countDistinct() eq requiredVendorCount
+                        }
+                )
             }
         val getTotalSamples = suspend {
             newSuspendedTransaction(
