@@ -1,1 +1,1 @@
-# **AURI** - Automated Unified Ransomware Intelligence
+# **AURI** - Automation Utility for Ransomware Intelligence
