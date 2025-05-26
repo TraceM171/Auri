@@ -15,7 +15,7 @@ import kotlinx.datetime.Clock
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.seconds
 
-class Evaluation : SuspendingCliktCommand(name = "evaluation") {
+class EvaluationPhase : SuspendingCliktCommand(name = "evaluation") {
     private val phaseDescription = """
         The Evaluation Phase is the third phase of the AURI pipeline. It is responsible for checking the effectiveness of security vendors against the live samples.
     """.trimIndent()

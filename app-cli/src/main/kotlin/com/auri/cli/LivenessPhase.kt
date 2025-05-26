@@ -18,7 +18,7 @@ import kotlinx.datetime.Clock
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.seconds
 
-class Liveness : SuspendingCliktCommand(name = "liveness") {
+class LivenessPhase : SuspendingCliktCommand(name = "liveness") {
     private val phaseDescription = """
         The Liveness Phase is the second phase of the AURI pipeline. It is responsible for obtaining liveness status about collected samples, uses multiple sources via dynamic execution.
     """.trimIndent()

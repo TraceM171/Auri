@@ -18,7 +18,7 @@ import kotlinx.datetime.Clock
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.seconds
 
-class Collection : SuspendingCliktCommand(name = "collection") {
+class CollectionPhase : SuspendingCliktCommand(name = "collection") {
     private val phaseDescription = """
         The Collection Phase is the first phase of the AURI pipeline. It is responsible for collecting malware samples from various sources and storing them in the database.
     """.trimIndent()
