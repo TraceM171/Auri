@@ -301,10 +301,10 @@ private suspend fun init(
     pruneCache: Boolean
 ) = either<InitError, InitContext> {
     val cacheDir = baseDirectory.resolve("cache/collection")
-    val samplesDir = baseDirectory.resolve("samples")
-    val extensionsDir = baseDirectory.resolve("extensions")
-    val logsFolder = baseDirectory.resolve("logs")
-    val logsFile = logsFolder.resolve(actionName)
+    val samplesDir = baseDirectory.resolve("samples").createDirectories()
+    val extensionsDir = baseDirectory.resolve("extensions").createDirectories()
+    val logsFolder = baseDirectory.resolve("logs").createDirectories()
+    val logsFile = logsFolder.resolve(actionName).createDirectories()
     val auriDB = baseDirectory.resolve("auri.db").let(::sqliteConnection)
 
     Logger.run {
