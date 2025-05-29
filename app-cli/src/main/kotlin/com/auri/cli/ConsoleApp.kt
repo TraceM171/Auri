@@ -26,7 +26,7 @@ fun main(args: Array<String>) = SuspendApp(
 private class Auri : SuspendingNoOpCliktCommand() {
     override val printHelpOnEmptyArgs = true
     override fun help(context: Context): String = """
-        AURI (Automated Unified Ransomware Intelligence) is a ransomware analysis pipeline that is designed to
+        AURI (Automation Utility for Ransomware Intelligence) is a ransomware analysis pipeline that is designed to
         provide a repeatable and automated way to analyze ransomware behavior and detection capabilities of security
         products.
     """.trimIndent()
