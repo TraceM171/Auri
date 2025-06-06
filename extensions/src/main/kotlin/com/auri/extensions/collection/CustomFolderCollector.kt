@@ -28,7 +28,6 @@ class CustomFolderCollector(
     data class Definition(
         val periodicity: PeriodicActionConfig? = null,
         val samplesDir: Path,
-        val deleteAfterCollection: Boolean = true,
         val customName: String = "Custom folder (${samplesDir.name})",
     )
 
